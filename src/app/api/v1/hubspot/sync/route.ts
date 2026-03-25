@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getHubSpotClient } from '@/lib/hubspot/client';
 import { runFullSync } from '@/lib/hubspot/sync';
 import { calculateAllHealthScores } from '@/lib/health-score/calculator';
 import { verifyCronRequest } from '@/lib/api/middleware';
@@ -6,34 +7,75 @@ import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('api:hubspot:sync');
 
-async function runSync(): Promise<NextResponse> {
+function isAuthorized(request: NextRequest): boolean {
+  const { searchParams } = new URL(request.url);
+  const secret = searchParams.get('secret');
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return true; // open in dev
+  return secret === cronSecret;
+}
+
+async function handleSync(type: string | null): Promise<NextResponse> {
+  const client = getHubSpotClient();
+
   try {
-    logger.info('Starting HubSpot sync');
+    if (type === 'companies') {
+      const { syncCompaniesOnly } = await import('@/lib/hubspot/sync');
+      const companies = await client.getCompanies();
+      const count = await syncCompaniesOnly(companies);
+      logger.info(`Synced ${count} companies`);
+      return NextResponse.json({ success: true, type: 'companies', count });
+    }
+
+    if (type === 'contacts') {
+      const { syncContactsOnly } = await import('@/lib/hubspot/sync');
+      const contacts = await client.getContacts();
+      const count = await syncContactsOnly(contacts);
+      return NextResponse.json({ success: true, type: 'contacts', count });
+    }
+
+    if (type === 'tickets') {
+      const { syncTicketsOnly } = await import('@/lib/hubspot/sync');
+      const tickets = await client.getTickets();
+      const count = await syncTicketsOnly(tickets);
+      return NextResponse.json({ success: true, type: 'tickets', count });
+    }
+
+    if (type === 'engagements') {
+      const { syncEngagementsOnly } = await import('@/lib/hubspot/sync');
+      const engagements = await client.getEngagements();
+      const count = await syncEngagementsOnly(engagements);
+      return NextResponse.json({ success: true, type: 'engagements', count });
+    }
+
+    if (type === 'scores') {
+      const result = await calculateAllHealthScores();
+      return NextResponse.json({ success: true, type: 'scores', ...result });
+    }
+
+    // Full sync (cron)
     const syncResult = await runFullSync();
     const healthResult = await calculateAllHealthScores();
     return NextResponse.json({ success: true, sync: syncResult, healthScores: healthResult });
   } catch (error) {
-    logger.error('Sync failed', { error: String(error) });
+    logger.error('Sync failed', { type, error: String(error) });
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
   }
 }
 
-// Called by Vercel cron (Authorization: Bearer <CRON_SECRET>)
+// Vercel cron (Authorization: Bearer <CRON_SECRET>)
 export async function POST(request: NextRequest) {
   if (!verifyCronRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-  return runSync();
+  return handleSync(null);
 }
 
-// Manual trigger via browser: GET /api/v1/hubspot/sync?secret=<CRON_SECRET>
+// Manual trigger: GET /api/v1/hubspot/sync?secret=<CRON_SECRET>&type=companies|contacts|tickets|engagements|scores
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const secret = searchParams.get('secret');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && secret !== cronSecret) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-  return runSync();
+  const { searchParams } = new URL(request.url);
+  return handleSync(searchParams.get('type'));
 }

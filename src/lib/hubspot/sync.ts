@@ -309,6 +309,12 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
   return count;
 }
 
+// ─── Single-type exports (for step-by-step sync) ─────────────────────────────
+export const syncCompaniesOnly = syncCompanies;
+export const syncContactsOnly = syncContacts;
+export const syncTicketsOnly = syncTickets;
+export const syncEngagementsOnly = syncEngagements;
+
 // ─── Main sync ────────────────────────────────────────────────────────────────
 
 export async function runFullSync(): Promise<SyncResult> {

@@ -7,9 +7,11 @@ import { reportsApi, alertsApi, clientsApi } from '@/lib/api/client';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { Badge } from '@/components/ui/Badge';
-import { AlertTriangle, Users, TrendingUp, Calendar, Bell, ChevronRight } from 'lucide-react';
-import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
+import { AlertTriangle, Users, Calendar, Bell, ChevronRight } from 'lucide-react';
+import { formatDistanceToNow, format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { SyncButton } from '@/components/ui/SyncButton';
+import { getOwnerByEmail } from '@/lib/config/owners';
 import type { ClientWithHealth, Alert, HealthStatus } from '@/types';
 
 interface SummaryData {
@@ -49,7 +51,8 @@ function formatMrr(n: number) {
 }
 
 export default function DashboardPage() {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
+  const isAdmin = !getOwnerByEmail(user?.email ?? '');
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
   const [atRiskClients, setAtRiskClients] = useState<ClientWithHealth[]>([]);
@@ -86,11 +89,19 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          {format(new Date(), "EEEE d MMMM yyyy", { locale: it })}
-        </p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {format(new Date(), "EEEE d MMMM yyyy", { locale: it })}
+          </p>
+        </div>
+        {isAdmin && (
+          <SyncButton
+            secret={process.env.NEXT_PUBLIC_CRON_SECRET ?? 'spoki-cron-2026'}
+            onComplete={load}
+          />
+        )}
       </div>
 
       {/* KPI row */}
