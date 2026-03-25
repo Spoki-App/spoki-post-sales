@@ -371,6 +371,6 @@ export async function runFullSync(): Promise<SyncResult> {
   }
 
   result.durationMs = Date.now() - start;
-  logger.info('HubSpot sync complete', result);
+  logger.info('HubSpot sync complete', { companies: result.companies, contacts: result.contacts, tickets: result.tickets, engagements: result.engagements, durationMs: result.durationMs });
   return result;
 }

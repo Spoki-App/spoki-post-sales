@@ -6,7 +6,7 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
   try {
     const [clientsStats, healthStats, tasksStats, alertsStats, renewalStats] = await Promise.all([
       pgQuery<{ total: string }>('SELECT COUNT(*) AS total FROM clients'),
-      pgQuery<{ status: string; count: string; total_mrr: string }>(
+      pgQuery<{ status: string; count: string; total_mrr: string | null }>(
         `SELECT hs.status, COUNT(*) AS count, SUM(c.mrr) AS total_mrr
          FROM (
            SELECT DISTINCT ON (client_id) client_id, status
@@ -20,7 +20,7 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
          WHERE status NOT IN ('done', 'cancelled') GROUP BY status`
       ),
       pgQuery<{ count: string }>('SELECT COUNT(*) AS count FROM alerts WHERE resolved = false'),
-      pgQuery<{ window: string; count: string; total_mrr: string }>(
+      pgQuery<{ renewal_window: string; count: string; total_mrr: string | null }>(
         `SELECT
            CASE
              WHEN renewal_date <= NOW() + INTERVAL '14 days' THEN '14d'
