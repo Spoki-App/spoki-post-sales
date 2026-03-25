@@ -1,0 +1,20 @@
+{
+  "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/api/v1/hubspot/sync",
+      "schedule": "0 * * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/v1/hubspot/sync/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/v1/reports/**": {
+      "maxDuration": 60
+    },
+    "src/app/api/v1/**": {
+      "maxDuration": 30
+    }
+  }
+}
