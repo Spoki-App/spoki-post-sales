@@ -21,9 +21,16 @@ export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {
   "75723397":   { id: "75723397",   email: "enrico.petrelli@spoki.it",       firstName: "Enrico",     lastName: "Petrelli",    team: "Customer Support" },
 };
 
+// Alternative email aliases for owners who log in with a different email than HubSpot
+const EMAIL_ALIASES: Record<string, string> = {
+  'giulio.trinchera@spoki.com': 'giulio.trinchera@spoki.it',
+};
+
 export function getOwnerByEmail(email: string | null | undefined): HubSpotOwner | null {
   if (!email) return null;
-  return Object.values(HUBSPOT_OWNERS).find(o => o.email.toLowerCase() === email.toLowerCase()) ?? null;
+  const normalized = email.toLowerCase();
+  const resolved = EMAIL_ALIASES[normalized] ?? normalized;
+  return Object.values(HUBSPOT_OWNERS).find(o => o.email.toLowerCase() === resolved) ?? null;
 }
 
 export function getOwnerName(ownerId: string | null | undefined): string {
