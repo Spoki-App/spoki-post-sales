@@ -91,8 +91,16 @@ class HubSpotClient {
     });
   }
 
-  private async getWithRetry(url: string, params: Record<string, unknown>, attempt = 0): Promise<{ data: unknown }> {
+  private async getWithRetry(
+    url: string,
+    params: Record<string, unknown>,
+    options?: { method?: 'GET' | 'POST'; data?: unknown },
+    attempt = 0
+  ): Promise<{ data: unknown }> {
     try {
+      if (options?.method === 'POST') {
+        return await this.http.post(url, options.data);
+      }
       return await this.http.get(url, { params });
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -100,7 +108,7 @@ class HubSpotClient {
         const wait = Math.pow(2, attempt) * 1000 + Math.random() * 500;
         logger.warn(`HubSpot rate limit hit, retrying in ${Math.round(wait)}ms (attempt ${attempt + 1})`);
         await new Promise(r => setTimeout(r, wait));
-        return this.getWithRetry(url, params, attempt + 1);
+        return this.getWithRetry(url, params, options, attempt + 1);
       }
       throw err;
     }
@@ -165,7 +173,70 @@ class HubSpotClient {
   }
 
   async getCompanies(): Promise<HSCompany[]> {
-    logger.info('Fetching all companies from HubSpot');
+    logger.info('Fetching companies from HubSpot (filtered by CS owner)');
+    const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
+
+    // Only fetch companies assigned to known CS owners — avoids downloading thousands of leads
+    const { HUBSPOT_OWNERS } = await import('@/lib/config/owners');
+    const ownerIds = Object.keys(HUBSPOT_OWNERS);
+
+    const results: HSCompany[] = [];
+    let after: string | undefined;
+
+    do {
+      const response = await this.getWithRetry('/crm/v3/objects/companies/search', {}, {
+        method: 'POST',
+        data: {
+          filterGroups: [{
+            filters: [{
+              propertyName: 'hubspot_owner_id',
+              operator: 'IN',
+              values: ownerIds,
+            }]
+          }],
+          properties: props.split(','),
+          limit: 100,
+          ...(after ? { after } : {}),
+        }
+      });
+
+      const { results: items, paging } = response.data as {
+        results: Array<{ id: string; properties: Record<string, string | null> }>;
+        paging?: { next?: { after: string } };
+      };
+
+      for (const { id, properties: p } of items) {
+        results.push({
+          id,
+          name: p[HUBSPOT_COMPANY_PROPS.name] ?? null,
+          domain: p[HUBSPOT_COMPANY_PROPS.domain] ?? null,
+          industry: p[HUBSPOT_COMPANY_PROPS.industry] ?? null,
+          city: p[HUBSPOT_COMPANY_PROPS.city] ?? null,
+          country: p[HUBSPOT_COMPANY_PROPS.country] ?? null,
+          phone: p[HUBSPOT_COMPANY_PROPS.phone] ?? null,
+          lifecycleStage: p[HUBSPOT_COMPANY_PROPS.lifecycleStage] ?? null,
+          plan: p[HUBSPOT_COMPANY_PROPS.plan] ?? null,
+          mrr: p[HUBSPOT_COMPANY_PROPS.mrr] ? parseFloat(p[HUBSPOT_COMPANY_PROPS.mrr]!) : null,
+          contractValue: p[HUBSPOT_COMPANY_PROPS.contractValue] ? parseFloat(p[HUBSPOT_COMPANY_PROPS.contractValue]!) : null,
+          contractStartDate: p[HUBSPOT_COMPANY_PROPS.contractStartDate] ?? null,
+          renewalDate: p[HUBSPOT_COMPANY_PROPS.renewalDate] ?? null,
+          onboardingStatus: p[HUBSPOT_COMPANY_PROPS.onboardingStatus] ?? null,
+          csOwnerId: p[HUBSPOT_COMPANY_PROPS.csOwner] ?? null,
+          churnRisk: p[HUBSPOT_COMPANY_PROPS.churnRisk] ?? null,
+          createDate: p[HUBSPOT_COMPANY_PROPS.createDate] ?? null,
+          rawProperties: p as Record<string, unknown>,
+        });
+      }
+
+      after = paging?.next?.after;
+    } while (after);
+
+    logger.info(`Fetched ${results.length} companies (CS-owned)`);
+    return results;
+  }
+
+  async getCompaniesLegacy(): Promise<HSCompany[]> {
+    logger.info('Fetching all companies from HubSpot (no filter)');
     const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
 
     return this.fetchAllPages(
