@@ -13,12 +13,13 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const status = searchParams.get('status') ?? '';
     const viewAll = searchParams.get('viewAll') === 'true';
 
-    // Auto-filter by logged-in user's HubSpot owner ID.
-    // If the user's email is not in the owners map they are a manager and see all clients.
+    // Auto-filter by logged-in user's HubSpot owner ID across three owner fields.
+    // If not in the owners map → manager/admin → sees all clients.
     const loggedInOwner = getOwnerByEmail(auth.email);
-    const owner = viewAll
-      ? (searchParams.get('owner') ?? '')
-      : (loggedInOwner?.id ?? searchParams.get('owner') ?? '');
+    const ownerFilter = viewAll ? null : (loggedInOwner?.id ?? null);
+    const ownerSection = searchParams.get('section') ?? 'all';
+    // section: 'all' | 'onboarding' | 'success' | 'company'
+    const owner = searchParams.get('owner') ?? '';
 
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -36,6 +37,24 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     if (status) {
       conditions.push(`hs.status = $${idx++}`);
       params.push(status);
+    }
+    // Section filter: which owner field to match against the logged-in user
+    if (ownerFilter) {
+      if (ownerSection === 'onboarding') {
+        conditions.push(`c.onboarding_owner_id = $${idx++}`);
+        params.push(ownerFilter);
+      } else if (ownerSection === 'success') {
+        conditions.push(`c.success_owner_id = $${idx++}`);
+        params.push(ownerFilter);
+      } else if (ownerSection === 'company') {
+        conditions.push(`c.cs_owner_id = $${idx++}`);
+        params.push(ownerFilter);
+      } else {
+        // 'all' for logged-in owner: show any company where they are any type of owner
+        conditions.push(`(c.cs_owner_id = $${idx} OR c.onboarding_owner_id = $${idx} OR c.success_owner_id = $${idx})`);
+        params.push(ownerFilter);
+        idx++;
+      }
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

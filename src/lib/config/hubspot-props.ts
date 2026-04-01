@@ -19,7 +19,9 @@ export const HUBSPOT_COMPANY_PROPS = {
   mrr: 'mrr',                          // Monthly Recurring Revenue
   plan: 'plan',                         // Subscription plan (e.g. "starter", "pro", "enterprise")
   renewalDate: 'renewal_date',          // Contract renewal date
-  csOwner: 'hubspot_owner_id',          // Assigned Customer Success manager (owner)
+  companyOwner: 'hubspot_owner_id',      // Company owner (account owner)
+  onboardingOwner: 'customer_onboarding_owner', // Who follows onboarding
+  successOwner: 'customer_success_owner',       // Who follows CS
   onboardingStatus: 'onboarding_status', // e.g. "not_started", "in_progress", "complete"
   contractStartDate: 'contract_start_date',
   contractValue: 'contract_value',       // Total contract value (ACV)

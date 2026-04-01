@@ -51,6 +51,7 @@ export default function ClientsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [viewAll, setViewAll] = useState(false);
+  const [section, setSection] = useState<'all' | 'onboarding' | 'success' | 'company'>('all');
 
   // Check if the logged-in user is a CS owner or a manager (sees all)
   const isOwner = !!getOwnerByEmail(user?.email ?? '');
@@ -59,7 +60,12 @@ export default function ClientsPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await clientsApi.list(token, { page, q, status: statusFilter, viewAll: viewAll || !isOwner ? true : undefined } as Parameters<typeof clientsApi.list>[1]);
+      const params = {
+        page, q,
+        status: statusFilter,
+        ...(viewAll || !isOwner ? { viewAll: true } : { section }),
+      } as Parameters<typeof clientsApi.list>[1];
+      const res = await clientsApi.list(token, params);
       setClients(res.data);
       setTotal(res.total);
     } catch (e) {
@@ -67,7 +73,7 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, q, statusFilter, viewAll, isOwner]);
+  }, [token, page, q, statusFilter, viewAll, isOwner, section]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -88,6 +94,24 @@ export default function ClientsPage() {
           <p className="text-sm text-slate-500 mt-0.5">{total} clienti totali</p>
         </div>
         <div className="flex items-center gap-2">
+          {isOwner && !viewAll && (
+            <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+              {([
+                { id: 'all', label: 'Tutti i miei' },
+                { id: 'onboarding', label: 'Onboarding' },
+                { id: 'success', label: 'CS' },
+                { id: 'company', label: 'Company Owner' },
+              ] as const).map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => { setSection(s.id); setPage(1); }}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${section === s.id ? 'bg-white shadow text-slate-900 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
           {isOwner && (
             <button
               onClick={() => { setViewAll(v => !v); setPage(1); }}

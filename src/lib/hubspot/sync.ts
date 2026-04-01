@@ -44,7 +44,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
     const contractStartDates = chunk.map(c => c.contractStartDate ? new Date(c.contractStartDate) : null);
     const renewalDates = chunk.map(c => c.renewalDate ? new Date(c.renewalDate) : null);
     const onboardingStatuses = chunk.map(c => c.onboardingStatus);
-    const csOwnerIds = chunk.map(c => c.csOwnerId);
+    const csOwnerIds = chunk.map(c => c.companyOwnerId);
     const churnRisks = chunk.map(c => c.churnRisk);
     const rawProps = chunk.map(c => JSON.stringify(c.rawProperties));
 
@@ -52,41 +52,47 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
       `INSERT INTO clients (
         hubspot_id, name, domain, industry, city, country, phone,
         lifecycle_stage, plan, mrr, contract_value, contract_start_date,
-        renewal_date, onboarding_status, cs_owner_id, churn_risk,
+        renewal_date, onboarding_status, cs_owner_id, onboarding_owner_id, success_owner_id, churn_risk,
         raw_properties, last_synced_at, updated_at
       )
       SELECT * FROM UNNEST(
         $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
         $8::text[], $9::text[], $10::numeric[], $11::numeric[], $12::date[],
-        $13::date[], $14::text[], $15::text[], $16::text[],
-        $17::jsonb[], $18::timestamptz[], $19::timestamptz[]
+        $13::date[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[],
+        $19::jsonb[], $20::timestamptz[], $21::timestamptz[]
       ) AS t(hubspot_id, name, domain, industry, city, country, phone,
              lifecycle_stage, plan, mrr, contract_value, contract_start_date,
-             renewal_date, onboarding_status, cs_owner_id, churn_risk,
+             renewal_date, onboarding_status, cs_owner_id, onboarding_owner_id, success_owner_id, churn_risk,
              raw_properties, last_synced_at, updated_at)
       ON CONFLICT (hubspot_id) DO UPDATE SET
-        name                = EXCLUDED.name,
-        domain              = EXCLUDED.domain,
-        industry            = EXCLUDED.industry,
-        city                = EXCLUDED.city,
-        country             = EXCLUDED.country,
-        phone               = EXCLUDED.phone,
-        lifecycle_stage     = EXCLUDED.lifecycle_stage,
-        plan                = EXCLUDED.plan,
-        mrr                 = EXCLUDED.mrr,
-        contract_value      = EXCLUDED.contract_value,
-        contract_start_date = EXCLUDED.contract_start_date,
-        renewal_date        = EXCLUDED.renewal_date,
-        onboarding_status   = COALESCE(EXCLUDED.onboarding_status, clients.onboarding_status),
-        cs_owner_id         = EXCLUDED.cs_owner_id,
-        churn_risk          = EXCLUDED.churn_risk,
-        raw_properties      = EXCLUDED.raw_properties,
-        last_synced_at      = NOW(),
-        updated_at          = NOW()`,
+        name                 = EXCLUDED.name,
+        domain               = EXCLUDED.domain,
+        industry             = EXCLUDED.industry,
+        city                 = EXCLUDED.city,
+        country              = EXCLUDED.country,
+        phone                = EXCLUDED.phone,
+        lifecycle_stage      = EXCLUDED.lifecycle_stage,
+        plan                 = EXCLUDED.plan,
+        mrr                  = EXCLUDED.mrr,
+        contract_value       = EXCLUDED.contract_value,
+        contract_start_date  = EXCLUDED.contract_start_date,
+        renewal_date         = EXCLUDED.renewal_date,
+        onboarding_status    = COALESCE(EXCLUDED.onboarding_status, clients.onboarding_status),
+        cs_owner_id          = EXCLUDED.cs_owner_id,
+        onboarding_owner_id  = EXCLUDED.onboarding_owner_id,
+        success_owner_id     = EXCLUDED.success_owner_id,
+        churn_risk           = EXCLUDED.churn_risk,
+        raw_properties       = EXCLUDED.raw_properties,
+        last_synced_at       = NOW(),
+        updated_at           = NOW()`,
       [
         hubspotIds, names, domains, industries, cities, countries, phones,
         lifecycleStages, plans, mrrs, contractValues, contractStartDates,
-        renewalDates, onboardingStatuses, csOwnerIds, churnRisks,
+        renewalDates, onboardingStatuses,
+        chunk.map(c => c.companyOwnerId),
+        chunk.map(c => c.onboardingOwnerId),
+        chunk.map(c => c.successOwnerId),
+        churnRisks,
         rawProps,
         chunk.map(() => new Date()),
         chunk.map(() => new Date()),

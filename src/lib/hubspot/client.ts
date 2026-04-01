@@ -30,7 +30,9 @@ export interface HSCompany {
   contractStartDate: string | null;
   renewalDate: string | null;
   onboardingStatus: string | null;
-  csOwnerId: string | null;
+  companyOwnerId: string | null;
+  onboardingOwnerId: string | null;
+  successOwnerId: string | null;
   churnRisk: string | null;
   createDate: string | null;
   rawProperties: Record<string, unknown>;
@@ -176,24 +178,25 @@ class HubSpotClient {
     logger.info('Fetching companies from HubSpot (filtered by CS owner)');
     const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
 
-    // Only fetch companies assigned to known CS owners — avoids downloading thousands of leads
+    // Fetch companies where ANY of the three owner fields matches a known CS/Support team member
     const { HUBSPOT_OWNERS } = await import('@/lib/config/owners');
     const ownerIds = Object.keys(HUBSPOT_OWNERS);
 
     const results: HSCompany[] = [];
     let after: string | undefined;
 
+    // HubSpot search: filterGroups with OR logic — one group per owner field
+    const filterGroups = [
+      { filters: [{ propertyName: 'hubspot_owner_id', operator: 'IN', values: ownerIds }] },
+      { filters: [{ propertyName: 'customer_onboarding_owner', operator: 'IN', values: ownerIds }] },
+      { filters: [{ propertyName: 'customer_success_owner', operator: 'IN', values: ownerIds }] },
+    ];
+
     do {
       const response = await this.getWithRetry('/crm/v3/objects/companies/search', {}, {
         method: 'POST',
         data: {
-          filterGroups: [{
-            filters: [{
-              propertyName: 'hubspot_owner_id',
-              operator: 'IN',
-              values: ownerIds,
-            }]
-          }],
+          filterGroups,
           properties: props.split(','),
           limit: 100,
           ...(after ? { after } : {}),
@@ -221,7 +224,9 @@ class HubSpotClient {
           contractStartDate: p[HUBSPOT_COMPANY_PROPS.contractStartDate] ?? null,
           renewalDate: p[HUBSPOT_COMPANY_PROPS.renewalDate] ?? null,
           onboardingStatus: p[HUBSPOT_COMPANY_PROPS.onboardingStatus] ?? null,
-          csOwnerId: p[HUBSPOT_COMPANY_PROPS.csOwner] ?? null,
+          companyOwnerId: p[HUBSPOT_COMPANY_PROPS.companyOwner] ?? null,
+          onboardingOwnerId: p[HUBSPOT_COMPANY_PROPS.onboardingOwner] ?? null,
+          successOwnerId: p[HUBSPOT_COMPANY_PROPS.successOwner] ?? null,
           churnRisk: p[HUBSPOT_COMPANY_PROPS.churnRisk] ?? null,
           createDate: p[HUBSPOT_COMPANY_PROPS.createDate] ?? null,
           rawProperties: p as Record<string, unknown>,
@@ -256,9 +261,11 @@ class HubSpotClient {
         contractValue: p[HUBSPOT_COMPANY_PROPS.contractValue] ? parseFloat(p[HUBSPOT_COMPANY_PROPS.contractValue]!) : null,
         contractStartDate: p[HUBSPOT_COMPANY_PROPS.contractStartDate] ?? null,
         renewalDate: p[HUBSPOT_COMPANY_PROPS.renewalDate] ?? null,
-        onboardingStatus: p[HUBSPOT_COMPANY_PROPS.onboardingStatus] ?? null,
-        csOwnerId: p[HUBSPOT_COMPANY_PROPS.csOwner] ?? null,
-        churnRisk: p[HUBSPOT_COMPANY_PROPS.churnRisk] ?? null,
+          onboardingStatus: p[HUBSPOT_COMPANY_PROPS.onboardingStatus] ?? null,
+          companyOwnerId: p[HUBSPOT_COMPANY_PROPS.companyOwner] ?? null,
+          onboardingOwnerId: p[HUBSPOT_COMPANY_PROPS.onboardingOwner] ?? null,
+          successOwnerId: p[HUBSPOT_COMPANY_PROPS.successOwner] ?? null,
+          churnRisk: p[HUBSPOT_COMPANY_PROPS.churnRisk] ?? null,
         createDate: p[HUBSPOT_COMPANY_PROPS.createDate] ?? null,
         rawProperties: p as Record<string, unknown>,
       })
