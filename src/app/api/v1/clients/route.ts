@@ -85,7 +85,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         hs.score AS health_score,
         hs.status AS health_status,
         (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL) AS open_tickets,
-        (SELECT MAX(e.occurred_at) FROM engagements e WHERE e.client_id = c.id) AS last_contact_date
+        c.last_contact_date
       FROM clients c
       LEFT JOIN LATERAL (
         SELECT score, status FROM health_scores

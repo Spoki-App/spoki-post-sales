@@ -14,6 +14,8 @@ export const HUBSPOT_COMPANY_PROPS = {
   lifecycleStage: 'lifecyclestage',
   createDate: 'createdate',
   lastModifiedDate: 'hs_lastmodifieddate',
+  notesLastUpdated: 'notes_last_updated',
+  lastBookedMeeting: 'hs_last_booked_meeting_date',
 
   // Custom properties – update with your HubSpot internal names
   mrr: 'mrr',                          // Monthly Recurring Revenue

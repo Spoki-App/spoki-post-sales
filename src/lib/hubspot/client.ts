@@ -34,6 +34,7 @@ export interface HSCompany {
   onboardingOwnerId: string | null;
   successOwnerId: string | null;
   churnRisk: string | null;
+  lastContactDate: string | null;
   createDate: string | null;
   rawProperties: Record<string, unknown>;
 }
@@ -228,6 +229,14 @@ class HubSpotClient {
           onboardingOwnerId: p[HUBSPOT_COMPANY_PROPS.onboardingOwner] ?? null,
           successOwnerId: p[HUBSPOT_COMPANY_PROPS.successOwner] ?? null,
           churnRisk: p[HUBSPOT_COMPANY_PROPS.churnRisk] ?? null,
+          lastContactDate: (() => {
+            const d1 = p[HUBSPOT_COMPANY_PROPS.notesLastUpdated];
+            const d2 = p[HUBSPOT_COMPANY_PROPS.lastBookedMeeting];
+            if (!d1 && !d2) return null;
+            if (!d1) return d2;
+            if (!d2) return d1;
+            return new Date(d1) > new Date(d2) ? d1 : d2;
+          })(),
           createDate: p[HUBSPOT_COMPANY_PROPS.createDate] ?? null,
           rawProperties: p as Record<string, unknown>,
         });
@@ -266,6 +275,14 @@ class HubSpotClient {
           onboardingOwnerId: p[HUBSPOT_COMPANY_PROPS.onboardingOwner] ?? null,
           successOwnerId: p[HUBSPOT_COMPANY_PROPS.successOwner] ?? null,
           churnRisk: p[HUBSPOT_COMPANY_PROPS.churnRisk] ?? null,
+          lastContactDate: (() => {
+            const d1 = p[HUBSPOT_COMPANY_PROPS.notesLastUpdated];
+            const d2 = p[HUBSPOT_COMPANY_PROPS.lastBookedMeeting];
+            if (!d1 && !d2) return null;
+            if (!d1) return d2;
+            if (!d2) return d1;
+            return new Date(d1) > new Date(d2) ? d1 : d2;
+          })(),
         createDate: p[HUBSPOT_COMPANY_PROPS.createDate] ?? null,
         rawProperties: p as Record<string, unknown>,
       })

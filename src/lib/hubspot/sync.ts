@@ -53,17 +53,17 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
         hubspot_id, name, domain, industry, city, country, phone,
         lifecycle_stage, plan, mrr, contract_value, contract_start_date,
         renewal_date, onboarding_status, cs_owner_id, onboarding_owner_id, success_owner_id, churn_risk,
-        raw_properties, last_synced_at, updated_at
+        last_contact_date, raw_properties, last_synced_at, updated_at
       )
       SELECT * FROM UNNEST(
         $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
         $8::text[], $9::text[], $10::numeric[], $11::numeric[], $12::date[],
         $13::date[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[],
-        $19::jsonb[], $20::timestamptz[], $21::timestamptz[]
+        $19::timestamptz[], $20::jsonb[], $21::timestamptz[], $22::timestamptz[]
       ) AS t(hubspot_id, name, domain, industry, city, country, phone,
              lifecycle_stage, plan, mrr, contract_value, contract_start_date,
              renewal_date, onboarding_status, cs_owner_id, onboarding_owner_id, success_owner_id, churn_risk,
-             raw_properties, last_synced_at, updated_at)
+             last_contact_date, raw_properties, last_synced_at, updated_at)
       ON CONFLICT (hubspot_id) DO UPDATE SET
         name                 = EXCLUDED.name,
         domain               = EXCLUDED.domain,
@@ -82,6 +82,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
         onboarding_owner_id  = EXCLUDED.onboarding_owner_id,
         success_owner_id     = EXCLUDED.success_owner_id,
         churn_risk           = EXCLUDED.churn_risk,
+        last_contact_date    = EXCLUDED.last_contact_date,
         raw_properties       = EXCLUDED.raw_properties,
         last_synced_at       = NOW(),
         updated_at           = NOW()`,
@@ -93,6 +94,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
         chunk.map(c => c.onboardingOwnerId),
         chunk.map(c => c.successOwnerId),
         churnRisks,
+        chunk.map(c => c.lastContactDate ? new Date(c.lastContactDate) : null),
         rawProps,
         chunk.map(() => new Date()),
         chunk.map(() => new Date()),
