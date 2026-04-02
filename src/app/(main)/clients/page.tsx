@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Search, ChevronRight, RefreshCw, Users } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail } from '@/lib/config/owners';
@@ -43,6 +44,10 @@ function RenewalCell({ date }: { date: string | null }) {
 export default function ClientsPage() {
   const { token } = useAuthStore();
   const { user } = useAuthStore();
+  const searchParams = useSearchParams();
+  const section = (searchParams.get('section') ?? 'all') as 'all' | 'onboarding' | 'success' | 'company';
+  const isOwner = !!getOwnerByEmail(user?.email ?? '');
+
   const [clients, setClients] = useState<ClientWithHealth[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -50,11 +55,13 @@ export default function ClientsPage() {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [viewAll, setViewAll] = useState(false);
-  const [section, setSection] = useState<'all' | 'onboarding' | 'success' | 'company'>('all');
 
-  // Check if the logged-in user is a CS owner or a manager (sees all)
-  const isOwner = !!getOwnerByEmail(user?.email ?? '');
+  const SECTION_LABELS: Record<string, string> = {
+    company: 'Company Owner',
+    onboarding: 'Customer Onboarding Owner',
+    success: 'Customer Success Owner',
+    all: 'Tutti i clienti',
+  };
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -63,7 +70,7 @@ export default function ClientsPage() {
       const params = {
         page, q,
         status: statusFilter,
-        ...(viewAll || !isOwner ? { viewAll: true } : { section }),
+        ...(!isOwner ? { viewAll: true } : { section }),
       } as Parameters<typeof clientsApi.list>[1];
       const res = await clientsApi.list(token, params);
       setClients(res.data);
@@ -73,7 +80,7 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, q, statusFilter, viewAll, isOwner, section]);
+  }, [token, page, q, statusFilter, isOwner, section]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -90,42 +97,15 @@ export default function ClientsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Clienti</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{total} clienti totali</p>
+          <h1 className="text-xl font-semibold text-slate-900">
+            {SECTION_LABELS[section] ?? 'Clienti'}
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">{total} aziende</p>
         </div>
-        <div className="flex items-center gap-2">
-          {isOwner && !viewAll && (
-            <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
-              {([
-                { id: 'all', label: 'Tutti i miei' },
-                { id: 'onboarding', label: 'Onboarding' },
-                { id: 'success', label: 'CS' },
-                { id: 'company', label: 'Company Owner' },
-              ] as const).map(s => (
-                <button
-                  key={s.id}
-                  onClick={() => { setSection(s.id); setPage(1); }}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${section === s.id ? 'bg-white shadow text-slate-900 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {isOwner && (
-            <button
-              onClick={() => { setViewAll(v => !v); setPage(1); }}
-              className={`flex items-center gap-2 px-3 py-2 text-sm border rounded-lg transition-colors ${viewAll ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 border-slate-300 hover:bg-slate-50'}`}
-            >
-              <Users className="w-4 h-4" />
-              {viewAll ? 'I miei clienti' : 'Vedi tutti'}
-            </button>
-          )}
-          <button onClick={load} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
-            <RefreshCw className="w-4 h-4" />
-            Aggiorna
-          </button>
-        </div>
+        <button onClick={load} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+          <RefreshCw className="w-4 h-4" />
+          Aggiorna
+        </button>
       </div>
 
       {/* Filters */}

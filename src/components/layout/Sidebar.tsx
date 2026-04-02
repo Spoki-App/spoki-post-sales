@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
+import { getOwnerByEmail } from '@/lib/config/owners';
 import { cn } from '@/lib/utils/cn';
 import {
   LayoutDashboard,
@@ -13,19 +14,24 @@ import {
   Bell,
   BarChart3,
   LogOut,
+  ChevronDown,
+  Building2,
+  GraduationCap,
+  HeartHandshake,
 } from 'lucide-react';
 
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/clients', label: 'Clienti', icon: Users },
-  { href: '/tasks', label: 'Task', icon: CheckSquare },
-  { href: '/alerts', label: 'Alert', icon: Bell },
-  { href: '/reports', label: 'Report', icon: BarChart3 },
+const CLIENT_SECTIONS = [
+  { href: '/clients?section=company', label: 'Company Owner', icon: Building2, section: 'company' },
+  { href: '/clients?section=onboarding', label: 'Onboarding Owner', icon: GraduationCap, section: 'onboarding' },
+  { href: '/clients?section=success', label: 'CS Owner', icon: HeartHandshake, section: 'success' },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentSection = searchParams.get('section') ?? '';
   const { user, signOut: clearAuth } = useAuthStore();
+  const isOwner = !!getOwnerByEmail(user?.email ?? '');
 
   async function handleSignOut() {
     const auth = getFirebaseAuth();
@@ -47,24 +53,75 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                active
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              )}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </Link>
-          );
-        })}
+        {/* Dashboard */}
+        <Link
+          href="/dashboard"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+            pathname === '/dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          )}
+        >
+          <LayoutDashboard className="w-4 h-4 shrink-0" />
+          Dashboard
+        </Link>
+
+        {/* Clienti — tre sottovoci per CS owner, vista flat per manager */}
+        {isOwner ? (
+          <div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
+              <Users className="w-4 h-4 shrink-0" />
+              <span>Clienti</span>
+            </div>
+            <div className="ml-4 space-y-0.5">
+              {CLIENT_SECTIONS.map(({ href, label, icon: Icon, section }) => {
+                const active = pathname === '/clients' && currentSection === section;
+                return (
+                  <Link
+                    key={section}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <Link
+            href="/clients"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+              pathname.startsWith('/clients') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            )}
+          >
+            <Users className="w-4 h-4 shrink-0" />
+            Clienti
+          </Link>
+        )}
+
+        {/* Task, Alert, Report */}
+        {[
+          { href: '/tasks', label: 'Task', Icon: CheckSquare },
+          { href: '/alerts', label: 'Alert', Icon: Bell },
+          { href: '/reports', label: 'Report', Icon: BarChart3 },
+        ].map(({ href, label, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+              pathname === href ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            )}
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            {label}
+          </Link>
+        ))}
       </nav>
 
       {/* User + sign out */}
