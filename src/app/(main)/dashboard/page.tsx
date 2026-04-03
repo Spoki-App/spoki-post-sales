@@ -96,12 +96,10 @@ export default function DashboardPage() {
             {format(new Date(), "EEEE d MMMM yyyy", { locale: it })}
           </p>
         </div>
-        {isAdmin && (
-          <SyncButton
-            secret={process.env.NEXT_PUBLIC_CRON_SECRET ?? 'spoki-cron-2026'}
-            onComplete={load}
-          />
-        )}
+        <SyncButton
+          secret={process.env.NEXT_PUBLIC_CRON_SECRET ?? 'spoki-cron-2026'}
+          onComplete={load}
+        />
       </div>
 
       {/* KPI row */}
