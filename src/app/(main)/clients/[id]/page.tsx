@@ -356,39 +356,66 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       )}
 
       {tab === 'contacts' && (
-        <Card padding="none">
-          {contacts.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center py-8">Nessun contatto associato.</p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {contacts.map(c => (
-                <li key={c.id} className="px-5 py-3 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-medium text-slate-600 shrink-0">
-                    {((c.firstName ?? c.email ?? '?')[0] ?? '?').toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900">
-                      {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.email}
-                    </p>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      {c.email && (
-                        <span className="flex items-center gap-1 text-xs text-slate-400">
-                          <Mail className="w-3 h-3" />{c.email}
-                        </span>
-                      )}
-                      {c.jobTitle && <span className="text-xs text-slate-400">{c.jobTitle}</span>}
+        <div className="space-y-3">
+          {/* Role filter */}
+          <div className="flex gap-2 flex-wrap">
+            {(['', 'Admin & Finance', 'Buyer Contact', 'Marketing', 'Usage'] as const).map(role => (
+              <button
+                key={role || 'all'}
+                onClick={async () => {
+                  if (!token) return;
+                  const res = await clientsApi.getContacts(token, id, role || undefined);
+                  setContacts(res.data ?? []);
+                }}
+                className="px-3 py-1.5 text-xs rounded-full border transition-colors border-slate-300 text-slate-600 hover:bg-slate-50"
+              >
+                {role || 'Tutti'}
+              </button>
+            ))}
+          </div>
+          <Card padding="none">
+            {contacts.length === 0 ? (
+              <p className="text-slate-400 text-sm text-center py-8">Nessun contatto associato.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {contacts.map(c => (
+                  <li key={c.id} className="px-5 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-medium text-slate-600 shrink-0">
+                      {((c.firstName ?? c.email ?? '?')[0] ?? '?').toUpperCase()}
                     </div>
-                  </div>
-                  {c.lastActivityAt && (
-                    <p className="text-xs text-slate-400 shrink-0">
-                      {formatDistanceToNow(new Date(c.lastActivityAt), { addSuffix: true, locale: it })}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900">
+                        {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.email}
+                      </p>
+                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                        {c.email && (
+                          <span className="flex items-center gap-1 text-xs text-slate-400">
+                            <Mail className="w-3 h-3" />{c.email}
+                          </span>
+                        )}
+                        {c.jobTitle && <span className="text-xs text-slate-400">{c.jobTitle}</span>}
+                      </div>
+                      {(c as Contact & { communicationRoles?: string[] }).communicationRoles?.length ? (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {(c as Contact & { communicationRoles?: string[] }).communicationRoles!.map(role => (
+                            <span key={role} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-100">
+                              {role}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    {c.lastActivityAt && (
+                      <p className="text-xs text-slate-400 shrink-0">
+                        {formatDistanceToNow(new Date(c.lastActivityAt), { addSuffix: true, locale: it })}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
       )}
     </div>
   );

@@ -41,8 +41,8 @@ export const clientsApi = {
     fetchApi<ApiResponse<Ticket[]>>(`/clients/${id}/tickets`, { token }),
   getEngagements: (token: string, id: string) =>
     fetchApi<ApiResponse<Engagement[]>>(`/clients/${id}/engagements`, { token }),
-  getContacts: (token: string, id: string) =>
-    fetchApi<ApiResponse<Contact[]>>(`/clients/${id}/contacts`, { token }),
+  getContacts: (token: string, id: string, role?: string) =>
+    fetchApi<ApiResponse<Contact[]>>(`/clients/${id}/contacts${role ? `?role=${encodeURIComponent(role)}` : ''}`, { token }),
 };
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────

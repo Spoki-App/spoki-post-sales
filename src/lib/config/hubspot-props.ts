@@ -38,6 +38,7 @@ export const HUBSPOT_CONTACT_PROPS = {
   jobTitle: 'jobtitle',
   lifecycleStage: 'lifecyclestage',
   lastActivityDate: 'notes_last_updated',
+  communicationRole: 'communications_role',
   createDate: 'createdate',
   ownerId: 'hubspot_owner_id',
 } as const;

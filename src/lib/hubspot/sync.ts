@@ -133,28 +133,29 @@ async function syncContacts(contacts: HSContact[]): Promise<number> {
       `INSERT INTO contacts (
         hubspot_id, client_id, email, first_name, last_name,
         phone, job_title, lifecycle_stage, owner_id,
-        last_activity_at, raw_properties, last_synced_at, updated_at
+        last_activity_at, communication_roles, raw_properties, last_synced_at, updated_at
       )
       SELECT * FROM UNNEST(
         $1::text[], $2::uuid[], $3::text[], $4::text[], $5::text[],
         $6::text[], $7::text[], $8::text[], $9::text[],
-        $10::timestamptz[], $11::jsonb[], $12::timestamptz[], $13::timestamptz[]
+        $10::timestamptz[], $11::text[][], $12::jsonb[], $13::timestamptz[], $14::timestamptz[]
       ) AS t(hubspot_id, client_id, email, first_name, last_name,
              phone, job_title, lifecycle_stage, owner_id,
-             last_activity_at, raw_properties, last_synced_at, updated_at)
+             last_activity_at, communication_roles, raw_properties, last_synced_at, updated_at)
       ON CONFLICT (hubspot_id) DO UPDATE SET
-        client_id        = EXCLUDED.client_id,
-        email            = EXCLUDED.email,
-        first_name       = EXCLUDED.first_name,
-        last_name        = EXCLUDED.last_name,
-        phone            = EXCLUDED.phone,
-        job_title        = EXCLUDED.job_title,
-        lifecycle_stage  = EXCLUDED.lifecycle_stage,
-        owner_id         = EXCLUDED.owner_id,
-        last_activity_at = EXCLUDED.last_activity_at,
-        raw_properties   = EXCLUDED.raw_properties,
-        last_synced_at   = NOW(),
-        updated_at       = NOW()`,
+        client_id           = EXCLUDED.client_id,
+        email               = EXCLUDED.email,
+        first_name          = EXCLUDED.first_name,
+        last_name           = EXCLUDED.last_name,
+        phone               = EXCLUDED.phone,
+        job_title           = EXCLUDED.job_title,
+        lifecycle_stage     = EXCLUDED.lifecycle_stage,
+        owner_id            = EXCLUDED.owner_id,
+        last_activity_at    = EXCLUDED.last_activity_at,
+        communication_roles = EXCLUDED.communication_roles,
+        raw_properties      = EXCLUDED.raw_properties,
+        last_synced_at      = NOW(),
+        updated_at          = NOW()`,
       [
         chunk.map(c => c.id),
         chunk.map(c => (c.companyId ? clientMap[c.companyId] ?? null : null)),
@@ -166,6 +167,7 @@ async function syncContacts(contacts: HSContact[]): Promise<number> {
         chunk.map(c => c.lifecycleStage),
         chunk.map(c => c.ownerId),
         chunk.map(c => c.lastActivityDate ? new Date(c.lastActivityDate) : null),
+        chunk.map(c => c.communicationRoles),
         chunk.map(c => JSON.stringify(c.rawProperties)),
         chunk.map(() => new Date()),
         chunk.map(() => new Date()),

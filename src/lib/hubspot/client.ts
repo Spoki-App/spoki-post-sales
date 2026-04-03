@@ -50,6 +50,7 @@ export interface HSContact {
   lifecycleStage: string | null;
   ownerId: string | null;
   lastActivityDate: string | null;
+  communicationRoles: string[];
   createDate: string | null;
   rawProperties: Record<string, unknown>;
 }
@@ -308,6 +309,9 @@ class HubSpotClient {
         lifecycleStage: p[HUBSPOT_CONTACT_PROPS.lifecycleStage] ?? null,
         ownerId: p[HUBSPOT_CONTACT_PROPS.ownerId] ?? null,
         lastActivityDate: p[HUBSPOT_CONTACT_PROPS.lastActivityDate] ?? null,
+        communicationRoles: p[HUBSPOT_CONTACT_PROPS.communicationRole]
+          ? p[HUBSPOT_CONTACT_PROPS.communicationRole]!.split(';').map(r => r.trim()).filter(Boolean)
+          : [],
         createDate: p[HUBSPOT_CONTACT_PROPS.createDate] ?? null,
         rawProperties: p as Record<string, unknown>,
       })
