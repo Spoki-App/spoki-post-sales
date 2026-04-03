@@ -164,7 +164,14 @@ export default function ClientsPage() {
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium text-slate-900">{c.name}</p>
+                        <a
+                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${c.hubspotId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-slate-900 hover:text-blue-600 transition-colors"
+                        >
+                          {c.name}
+                        </a>
                         {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
                       </div>
                     </td>
