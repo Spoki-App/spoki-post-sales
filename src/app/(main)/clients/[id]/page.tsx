@@ -56,6 +56,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [tasks, setTasks] = useState<Task[]>([]);
   const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
   const [loading, setLoading] = useState(true);
+  const [roleTab, setRoleTab] = useState<string>('all');
 
   useEffect(() => {
     if (!token || !id) return;
@@ -355,17 +356,23 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         </Card>
       )}
 
-      {tab === 'contacts' && (
-        <div className="space-y-3">
-          {/* Role filter */}
+      {tab === 'contacts' && (() => {
+        const ROLES = ['Admin & Finance', 'Buyer Contact', 'Marketing', 'Usage'] as const;
+        type ContactWithRoles = Contact & { communicationRoles?: string[] };
+
+        const allContacts = contacts as ContactWithRoles[];
+
+        // Filter buttons (API-based, reloads contacts)
+        const filterButtons = (
           <div className="flex gap-2 flex-wrap">
-            {(['', 'Admin & Finance', 'Buyer Contact', 'Marketing', 'Usage'] as const).map(role => (
+            {(['', ...ROLES] as const).map(role => (
               <button
                 key={role || 'all'}
                 onClick={async () => {
                   if (!token) return;
                   const res = await clientsApi.getContacts(token, id, role || undefined);
                   setContacts(res.data ?? []);
+                  setRoleTab('all');
                 }}
                 className="px-3 py-1.5 text-xs rounded-full border transition-colors border-slate-300 text-slate-600 hover:bg-slate-50"
               >
@@ -373,12 +380,45 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </button>
             ))}
           </div>
+        );
+
+        // Role tabs (client-side grouping)
+        const roleTabs = (
+          <div className="border-b border-slate-200">
+            <div className="flex gap-1 overflow-x-auto">
+              {(['all', ...ROLES] as const).map(role => {
+                const count = role === 'all'
+                  ? allContacts.length
+                  : allContacts.filter(c => c.communicationRoles?.includes(role)).length;
+                const active = roleTab === role;
+                return (
+                  <button
+                    key={role}
+                    onClick={() => setRoleTab(role)}
+                    className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                      active ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {role === 'all' ? 'Tutti' : role}
+                    <span className={`ml-1.5 text-xs ${active ? 'text-blue-500' : 'text-slate-400'}`}>({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+
+        const visibleContacts = roleTab === 'all'
+          ? allContacts
+          : allContacts.filter(c => c.communicationRoles?.includes(roleTab));
+
+        const contactList = (
           <Card padding="none">
-            {contacts.length === 0 ? (
-              <p className="text-slate-400 text-sm text-center py-8">Nessun contatto associato.</p>
+            {visibleContacts.length === 0 ? (
+              <p className="text-slate-400 text-sm text-center py-8">Nessun contatto per questo ruolo.</p>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {contacts.map(c => (
+                {visibleContacts.map(c => (
                   <li key={c.id} className="px-5 py-3 flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-medium text-slate-600 shrink-0">
                       {((c.firstName ?? c.email ?? '?')[0] ?? '?').toUpperCase()}
@@ -395,9 +435,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         )}
                         {c.jobTitle && <span className="text-xs text-slate-400">{c.jobTitle}</span>}
                       </div>
-                      {(c as Contact & { communicationRoles?: string[] }).communicationRoles?.length ? (
+                      {c.communicationRoles?.length ? (
                         <div className="flex gap-1 mt-1 flex-wrap">
-                          {(c as Contact & { communicationRoles?: string[] }).communicationRoles!.map(role => (
+                          {c.communicationRoles.map(role => (
                             <span key={role} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-100">
                               {role}
                             </span>
@@ -415,8 +455,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </ul>
             )}
           </Card>
-        </div>
-      )}
+        );
+
+        return (
+          <div className="space-y-3">
+            {filterButtons}
+            {roleTabs}
+            {contactList}
+          </div>
+        );
+      })()}
     </div>
   );
 }
