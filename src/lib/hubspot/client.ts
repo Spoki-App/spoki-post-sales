@@ -291,7 +291,7 @@ class HubSpotClient {
   }
 
   async getContacts(): Promise<HSContact[]> {
-    logger.info('Fetching all contacts from HubSpot');
+    logger.info('Fetching all contacts from HubSpot (unfiltered - legacy)');
     const props = Object.values(HUBSPOT_CONTACT_PROPS).join(',');
 
     return this.fetchAllPagesWithAssociations(
@@ -316,6 +316,88 @@ class HubSpotClient {
         rawProperties: p as Record<string, unknown>,
       })
     );
+  }
+
+  /**
+   * Fetches only contacts associated with the given HubSpot company IDs.
+   * Uses v4 associations batch API + contacts batch/read — much faster than fetching all contacts.
+   */
+  async getContactsForCompanies(companyHubspotIds: string[]): Promise<HSContact[]> {
+    if (companyHubspotIds.length === 0) return [];
+    logger.info(`Fetching contacts for ${companyHubspotIds.length} companies via associations API`);
+
+    const props = Object.values(HUBSPOT_CONTACT_PROPS).join(',');
+    const BATCH = 100;
+
+    // Step 1: resolve company → contact IDs via v4 associations batch
+    const contactToCompanyMap: Record<string, string> = {};
+
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/contacts/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string }> }> };
+        for (const item of data.results ?? []) {
+          for (const assoc of item.to ?? []) {
+            // Keep first company found per contact
+            if (!contactToCompanyMap[assoc.toObjectId]) {
+              contactToCompanyMap[assoc.toObjectId] = item.from.id;
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn(`Associations batch failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+
+    const contactIds = Object.keys(contactToCompanyMap);
+    if (contactIds.length === 0) return [];
+    logger.info(`Found ${contactIds.length} unique contacts across synced companies`);
+
+    // Step 2: fetch contact details in batches of 100
+    const results: HSContact[] = [];
+
+    for (let i = 0; i < contactIds.length; i += BATCH) {
+      const slice = contactIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/contacts/batch/read', {}, {
+          method: 'POST',
+          data: {
+            inputs: slice.map(id => ({ id })),
+            properties: props.split(','),
+          },
+        });
+        const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
+        for (const item of data.results ?? []) {
+          const p = item.properties;
+          results.push({
+            id: item.id,
+            companyId: contactToCompanyMap[item.id] ?? null,
+            email: p[HUBSPOT_CONTACT_PROPS.email] ?? null,
+            firstName: p[HUBSPOT_CONTACT_PROPS.firstName] ?? null,
+            lastName: p[HUBSPOT_CONTACT_PROPS.lastName] ?? null,
+            phone: p[HUBSPOT_CONTACT_PROPS.phone] ?? null,
+            jobTitle: p[HUBSPOT_CONTACT_PROPS.jobTitle] ?? null,
+            lifecycleStage: p[HUBSPOT_CONTACT_PROPS.lifecycleStage] ?? null,
+            ownerId: p[HUBSPOT_CONTACT_PROPS.ownerId] ?? null,
+            lastActivityDate: p[HUBSPOT_CONTACT_PROPS.lastActivityDate] ?? null,
+            communicationRoles: p[HUBSPOT_CONTACT_PROPS.communicationRole]
+              ? p[HUBSPOT_CONTACT_PROPS.communicationRole]!.split(';').map(r => r.trim()).filter(Boolean)
+              : [],
+            createDate: p[HUBSPOT_CONTACT_PROPS.createDate] ?? null,
+            rawProperties: p as Record<string, unknown>,
+          });
+        }
+      } catch (err) {
+        logger.warn(`Contact batch/read failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+
+    logger.info(`Fetched ${results.length} contacts for synced companies`);
+    return results;
   }
 
   async getTickets(): Promise<HSTicket[]> {

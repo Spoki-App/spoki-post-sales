@@ -3,6 +3,7 @@ import { getHubSpotClient } from '@/lib/hubspot/client';
 import { runFullSync } from '@/lib/hubspot/sync';
 import { calculateAllHealthScores } from '@/lib/health-score/calculator';
 import { verifyCronRequest } from '@/lib/api/middleware';
+import { pgQuery } from '@/lib/db/postgres';
 import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('api:hubspot:sync');
@@ -29,7 +30,11 @@ async function handleSync(type: string | null): Promise<NextResponse> {
 
     if (type === 'contacts') {
       const { syncContactsOnly } = await import('@/lib/hubspot/sync');
-      const contacts = await client.getContacts();
+      // Fetch only contacts associated with companies already in the DB
+      const companyIdsRes = await pgQuery<{ hubspot_id: string }>('SELECT hubspot_id FROM clients');
+      const companyHubspotIds = companyIdsRes.rows.map(r => r.hubspot_id);
+      logger.info(`Fetching contacts for ${companyHubspotIds.length} synced companies`);
+      const contacts = await client.getContactsForCompanies(companyHubspotIds);
       const count = await syncContactsOnly(contacts);
       return NextResponse.json({ success: true, type: 'contacts', count });
     }
