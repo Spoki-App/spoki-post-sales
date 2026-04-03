@@ -15,13 +15,13 @@ export const GET = withAuth(async (req: NextRequest, _auth: AuthenticatedRequest
       id: string; hubspot_id: string; email: string | null; first_name: string | null;
       last_name: string | null; phone: string | null; job_title: string | null;
       lifecycle_stage: string | null; owner_id: string | null; last_activity_at: string | null;
-      communication_roles: string[] | null;
+      communication_roles: string | null;
     }>(
       `SELECT id, hubspot_id, email, first_name, last_name, phone, job_title,
               lifecycle_stage, owner_id, last_activity_at, communication_roles
        FROM contacts
        WHERE client_id = $1
-         ${roleFilter ? `AND $2 = ANY(communication_roles)` : ''}
+         ${roleFilter ? `AND (';' || COALESCE(communication_roles,'') || ';') LIKE '%' || ';' || $2 || ';' || '%'` : ''}
        ORDER BY last_activity_at DESC NULLS LAST`,
       roleFilter ? [id, roleFilter] : [id]
     );
@@ -31,7 +31,9 @@ export const GET = withAuth(async (req: NextRequest, _auth: AuthenticatedRequest
       firstName: c.first_name, lastName: c.last_name, phone: c.phone,
       jobTitle: c.job_title, lifecycleStage: c.lifecycle_stage,
       ownerId: c.owner_id, lastActivityAt: c.last_activity_at,
-      communicationRoles: c.communication_roles ?? [],
+      communicationRoles: c.communication_roles
+        ? c.communication_roles.split(';').filter(Boolean)
+        : [],
     })) });
   } catch (error) {
     return createErrorResponse(error);
