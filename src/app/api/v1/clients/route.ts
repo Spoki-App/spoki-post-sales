@@ -75,13 +75,15 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       id: string; hubspot_id: string; name: string; domain: string | null;
       industry: string | null; plan: string | null; mrr: string | null;
       renewal_date: string | null; cs_owner_id: string | null;
-      onboarding_status: string | null; updated_at: string;
+      onboarding_status: string | null; onboarding_stage: string | null;
+      onboarding_stage_type: string | null; updated_at: string;
       health_score: string | null; health_status: string | null;
       open_tickets: string | null; last_contact_date: string | null;
     }>(
       `SELECT
         c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
-        c.renewal_date, c.cs_owner_id, c.onboarding_status, c.updated_at,
+        c.renewal_date, c.cs_owner_id, c.onboarding_status,
+        c.onboarding_stage, c.onboarding_stage_type, c.updated_at,
         hs.score AS health_score,
         hs.status AS health_status,
         (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL) AS open_tickets,
@@ -109,6 +111,8 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       renewalDate: r.renewal_date,
       csOwnerId: r.cs_owner_id,
       onboardingStatus: r.onboarding_status,
+      onboardingStage: r.onboarding_stage,
+      onboardingStageType: r.onboarding_stage_type,
       updatedAt: r.updated_at,
       healthScore: r.health_score ? {
         score: parseInt(r.health_score),

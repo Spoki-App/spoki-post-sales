@@ -12,6 +12,8 @@ import { Search, ChevronRight, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail } from '@/lib/config/owners';
+import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
+import type { OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth, HealthStatus } from '@/types';
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
@@ -148,7 +150,7 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {['Azienda', 'Salute', 'MRR', 'Piano', 'CS Owner', 'Ticket aperti', 'Ultimo contatto', 'Rinnovo'].map(h => (
+                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'CS Owner', 'Ultimo contatto', 'Rinnovo'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
                 <th className="w-10" />
@@ -174,6 +176,16 @@ export default function ClientsPage() {
                         </a>
                         {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {(c as ClientWithHealth & { onboardingStage?: string; onboardingStageType?: string }).onboardingStage ? (
+                        <OnboardingStageBadge
+                          label={(c as ClientWithHealth & { onboardingStage?: string; onboardingStageType?: string }).onboardingStage!}
+                          type={((c as ClientWithHealth & { onboardingStage?: string; onboardingStageType?: string }).onboardingStageType ?? 'normal') as OnboardingStageType}
+                        />
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {c.healthScore ? (

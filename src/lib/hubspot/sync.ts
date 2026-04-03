@@ -319,11 +319,46 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
   return count;
 }
 
+// ─── Update onboarding stage from tickets ────────────────────────────────────
+
+async function updateOnboardingStages(): Promise<number> {
+  const { ONBOARDING_PIPELINE_ID, ONBOARDING_STAGES } = await import('@/lib/config/pipelines');
+
+  // For each client, find the most recent ticket in the Onboarding pipeline
+  const res = await pgQuery<{ client_id: string; hs_pipeline_stage: string }>(
+    `SELECT DISTINCT ON (client_id)
+       client_id, status AS hs_pipeline_stage
+     FROM tickets
+     WHERE pipeline = $1
+       AND client_id IS NOT NULL
+     ORDER BY client_id, opened_at DESC NULLS LAST`,
+    [ONBOARDING_PIPELINE_ID]
+  );
+
+  let updated = 0;
+  for (const row of res.rows) {
+    const stage = ONBOARDING_STAGES[row.hs_pipeline_stage];
+    if (!stage) continue;
+    await pgQuery(
+      `UPDATE clients SET onboarding_stage = $1, onboarding_stage_type = $2, updated_at = NOW() WHERE id = $3`,
+      [stage.label, stage.type, row.client_id]
+    );
+    updated++;
+  }
+
+  return updated;
+}
+
 // ─── Single-type exports (for step-by-step sync) ─────────────────────────────
 export const syncCompaniesOnly = syncCompanies;
 export const syncContactsOnly = syncContacts;
-export const syncTicketsOnly = syncTickets;
 export const syncEngagementsOnly = syncEngagements;
+
+export async function syncTicketsOnly(tickets: HSTicket[]): Promise<number> {
+  const count = await syncTickets(tickets);
+  await updateOnboardingStages();
+  return count;
+}
 
 // ─── Main sync ────────────────────────────────────────────────────────────────
 

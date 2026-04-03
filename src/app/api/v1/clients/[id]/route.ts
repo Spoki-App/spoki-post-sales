@@ -11,16 +11,17 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
     const res = await pgQuery<{
       id: string; hubspot_id: string; name: string; domain: string | null;
       industry: string | null; city: string | null; country: string | null;
-      phone: string | null; lifecycle_stage: string | null; plan: string | null;
+      phone: string | null;       lifecycle_stage: string | null; plan: string | null;
       mrr: string | null; contract_value: string | null; contract_start_date: string | null;
       renewal_date: string | null; onboarding_status: string | null;
+      onboarding_stage: string | null; onboarding_stage_type: string | null;
       cs_owner_id: string | null; churn_risk: string | null;
       last_synced_at: string; created_at: string; updated_at: string;
     }>(
       `SELECT id, hubspot_id, name, domain, industry, city, country, phone,
               lifecycle_stage, plan, mrr, contract_value, contract_start_date,
-              renewal_date, onboarding_status, cs_owner_id, churn_risk,
-              last_synced_at, created_at, updated_at
+              renewal_date, onboarding_status, onboarding_stage, onboarding_stage_type,
+              cs_owner_id, churn_risk, last_synced_at, created_at, updated_at
        FROM clients WHERE id = $1`,
       [id]
     );
@@ -59,6 +60,8 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
         renewalDate: client.renewal_date,
         onboardingStatus: client.onboarding_status,
         csOwnerId: client.cs_owner_id,
+        onboardingStage: client.onboarding_stage,
+        onboardingStageType: client.onboarding_stage_type,
         churnRisk: client.churn_risk,
         lastSyncedAt: client.last_synced_at,
         createdAt: client.created_at,

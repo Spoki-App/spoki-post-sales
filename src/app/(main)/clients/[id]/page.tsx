@@ -6,11 +6,19 @@ import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi, tasksApi, onboardingApi } from '@/lib/api/client';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { Badge } from '@/components/ui/Badge';
+import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
+import type { OnboardingStageType } from '@/lib/config/pipelines';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus } from '@/types';
+
+type ClientWithStage = Client & {
+  healthScore: HealthScore | null;
+  onboardingStage?: string | null;
+  onboardingStageType?: string | null;
+};
 
 type Tab = 'overview' | 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts';
 
@@ -48,7 +56,7 @@ function ScoreBar({ label, value, max = 25 }: { label: string; value: number; ma
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { token } = useAuthStore();
-  const [client, setClient] = useState<(Client & { healthScore: HealthScore | null }) | null>(null);
+  const [client, setClient] = useState<ClientWithStage | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
@@ -64,7 +72,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       setLoading(true);
       try {
         const res = await clientsApi.get(token, id);
-        if (res.data) setClient(res.data as Client & { healthScore: HealthScore | null });
+        if (res.data) setClient(res.data as ClientWithStage);
       } finally {
         setLoading(false);
       }
@@ -134,7 +142,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             )}
           </div>
         </div>
-        {hs && <HealthBadge status={hs.status as HealthStatus} score={hs.score} />}
+        <div className="flex items-center gap-2">
+          {client.onboardingStage && (
+            <OnboardingStageBadge
+              label={client.onboardingStage}
+              type={(client.onboardingStageType ?? 'normal') as OnboardingStageType}
+              size="md"
+            />
+          )}
+          {hs && <HealthBadge status={hs.status as HealthStatus} score={hs.score} />}
+        </div>
       </div>
 
       {/* KPI strip */}
