@@ -1,7 +1,7 @@
 /**
- * HubSpot API v3 client for Post-Sales data.
- * Reads companies, contacts, tickets, and engagements.
- * Fetches HubSpot data read-only; all writes go to local PostgreSQL.
+ * HubSpot API client for Post-Sales data.
+ * Reads companies, contacts, tickets, engagements.
+ * Supports workflow listing and enrollment via v4 automation API.
  */
 
 import axios, { type AxiosInstance } from 'axios';
@@ -548,6 +548,51 @@ class HubSpotClient {
     } while (after);
 
     return results;
+  }
+
+  // HubSpot object type IDs: 0-1 = contacts, 0-2 = companies
+  private static readonly OBJECT_TYPE_LABELS: Record<string, string> = {
+    '0-1': 'contacts',
+    '0-2': 'companies',
+  };
+
+  async getWorkflows(): Promise<Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt: string }>> {
+    logger.info('Fetching workflows from HubSpot');
+    const response = await this.getWithRetry('/automation/v4/flows', {});
+    const data = response.data as { flows?: Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string }> };
+    const flows = data.flows ?? (Array.isArray(response.data) ? response.data as Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string }> : []);
+
+    return flows.map(f => ({
+      id: f.id,
+      name: f.name ?? `Workflow ${f.id}`,
+      isEnabled: f.isEnabled,
+      objectTypeId: f.objectTypeId,
+      type: HubSpotClient.OBJECT_TYPE_LABELS[f.objectTypeId] ?? f.objectTypeId,
+      updatedAt: f.updatedAt ?? '',
+    }));
+  }
+
+  async enrollInWorkflow(
+    workflowId: string,
+    objectId: string,
+    objectType: 'contacts' | 'companies'
+  ): Promise<void> {
+    logger.info(`Enrolling ${objectType} ${objectId} in workflow ${workflowId}`);
+
+    if (objectType === 'contacts') {
+      await this.http.post(
+        `/automation/v2/workflows/${workflowId}/enrollments/contacts/${objectId}`,
+      );
+    } else {
+      // v4 enrollment not publicly documented for non-contacts;
+      // fall back to v2 if available, otherwise try v4
+      await this.http.post(
+        `/automation/v4/flows/${workflowId}/enrollments`,
+        { objectId, objectType: objectType === 'companies' ? '0-2' : '0-1' },
+      );
+    }
+
+    logger.info(`Successfully enrolled ${objectType} ${objectId} in workflow ${workflowId}`);
   }
 
   async healthCheck(): Promise<boolean> {

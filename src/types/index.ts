@@ -171,6 +171,18 @@ export interface Alert {
   triggeredAt: string;
 }
 
+// ─── Workflow ─────────────────────────────────────────────────────────────────
+export interface Workflow {
+  id: string;
+  name: string;
+  isEnabled: boolean;
+  objectTypeId: string;
+  type: string;
+  updatedAt: string;
+}
+
+export type WorkflowObjectType = 'contacts' | 'companies';
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 export interface ApiResponse<T> {
   success: boolean;

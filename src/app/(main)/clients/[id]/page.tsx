@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/Badge';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import type { OnboardingStageType } from '@/lib/config/pipelines';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare } from 'lucide-react';
+import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus } from '@/types';
@@ -65,6 +66,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [roleTab, setRoleTab] = useState<string>('all');
+  const [showWorkflowModal, setShowWorkflowModal] = useState(false);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -143,6 +145,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowWorkflowModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            <Zap className="w-4 h-4 text-amber-500" />
+            Workflow
+          </button>
           {client.onboardingStage && (
             <OnboardingStageBadge
               label={client.onboardingStage}
@@ -372,6 +381,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           )}
         </Card>
       )}
+
+      <WorkflowEnrollModal
+        open={showWorkflowModal}
+        onClose={() => setShowWorkflowModal(false)}
+        objectId={client.hubspotId}
+        objectType="companies"
+        objectLabel={client.name}
+      />
 
       {tab === 'contacts' && (() => {
         const ROLES = ['Admin & Finance', 'Buyer Contact', 'Marketing', 'Usage'] as const;

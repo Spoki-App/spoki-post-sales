@@ -2,7 +2,7 @@
  * Typed API client for frontend → Next.js API routes communication.
  */
 
-import type { Client, ClientWithHealth, Ticket, Engagement, Contact, HealthScore, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, PaginatedResponse, ApiResponse } from '@/types';
+import type { Client, ClientWithHealth, Ticket, Engagement, Contact, HealthScore, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse } from '@/types';
 
 async function fetchApi<T>(
   path: string,
@@ -88,6 +88,18 @@ export const onboardingApi = {
   assignTemplate: (token: string, clientId: string, templateId: string) =>
     fetchApi<ApiResponse<OnboardingProgress>>(`/onboarding/${clientId}`, {
       method: 'POST', body: JSON.stringify({ templateId }), token,
+    }),
+};
+
+// ─── Workflows ────────────────────────────────────────────────────────────────
+export const workflowsApi = {
+  list: (token: string) =>
+    fetchApi<ApiResponse<Workflow[]>>('/hubspot/workflows', { token }),
+  enroll: (token: string, workflowId: string, objectId: string, objectType: 'contacts' | 'companies') =>
+    fetchApi<ApiResponse<{ enrolled: boolean }>>('/hubspot/workflows/enroll', {
+      method: 'POST',
+      body: JSON.stringify({ workflowId, objectId, objectType }),
+      token,
     }),
 };
 
