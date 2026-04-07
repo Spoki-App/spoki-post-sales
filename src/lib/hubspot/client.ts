@@ -550,19 +550,29 @@ class HubSpotClient {
     return results;
   }
 
-  // HubSpot object type IDs: 0-1 = contacts, 0-2 = companies
   private static readonly OBJECT_TYPE_LABELS: Record<string, string> = {
     '0-1': 'contacts',
     '0-2': 'companies',
+    '0-5': 'tickets',
   };
 
   async getWorkflows(): Promise<Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt: string }>> {
     logger.info('Fetching workflows from HubSpot');
-    const response = await this.getWithRetry('/automation/v4/flows', {});
-    const data = response.data as { flows?: Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string }> };
-    const flows = data.flows ?? (Array.isArray(response.data) ? response.data as Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string }> : []);
 
-    return flows.map(f => ({
+    type HSFlow = { id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string };
+    const all: HSFlow[] = [];
+    let after: string | undefined;
+
+    do {
+      const response = await this.getWithRetry('/automation/v4/flows', after ? { after } : {});
+      const data = response.data as { results?: HSFlow[]; paging?: { next?: { after: string } } };
+      if (data.results) all.push(...data.results);
+      after = data.paging?.next?.after;
+    } while (after);
+
+    logger.info(`Fetched ${all.length} workflows from HubSpot`);
+
+    return all.map(f => ({
       id: f.id,
       name: f.name ?? `Workflow ${f.id}`,
       isEnabled: f.isEnabled,
@@ -572,10 +582,16 @@ class HubSpotClient {
     }));
   }
 
+  private static readonly OBJECT_TYPE_IDS: Record<string, string> = {
+    contacts: '0-1',
+    companies: '0-2',
+    tickets: '0-5',
+  };
+
   async enrollInWorkflow(
     workflowId: string,
     objectId: string,
-    objectType: 'contacts' | 'companies'
+    objectType: 'contacts' | 'companies' | 'tickets'
   ): Promise<void> {
     logger.info(`Enrolling ${objectType} ${objectId} in workflow ${workflowId}`);
 
@@ -584,11 +600,9 @@ class HubSpotClient {
         `/automation/v2/workflows/${workflowId}/enrollments/contacts/${objectId}`,
       );
     } else {
-      // v4 enrollment not publicly documented for non-contacts;
-      // fall back to v2 if available, otherwise try v4
       await this.http.post(
         `/automation/v4/flows/${workflowId}/enrollments`,
-        { objectId, objectType: objectType === 'companies' ? '0-2' : '0-1' },
+        { objectId, objectType: HubSpotClient.OBJECT_TYPE_IDS[objectType] },
       );
     }
 

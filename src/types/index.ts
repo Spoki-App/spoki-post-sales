@@ -181,7 +181,7 @@ export interface Workflow {
   updatedAt: string;
 }
 
-export type WorkflowObjectType = 'contacts' | 'companies';
+export type WorkflowObjectType = 'contacts' | 'companies' | 'tickets';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 export interface ApiResponse<T> {

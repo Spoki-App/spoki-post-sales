@@ -95,7 +95,7 @@ export const onboardingApi = {
 export const workflowsApi = {
   list: (token: string) =>
     fetchApi<ApiResponse<Workflow[]>>('/hubspot/workflows', { token }),
-  enroll: (token: string, workflowId: string, objectId: string, objectType: 'contacts' | 'companies') =>
+  enroll: (token: string, workflowId: string, objectId: string, objectType: 'contacts' | 'companies' | 'tickets') =>
     fetchApi<ApiResponse<{ enrolled: boolean }>>('/hubspot/workflows/enroll', {
       method: 'POST',
       body: JSON.stringify({ workflowId, objectId, objectType }),

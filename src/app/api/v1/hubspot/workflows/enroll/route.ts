@@ -7,15 +7,15 @@ export const POST = withAuth(async (request: NextRequest) => {
     const body = await request.json() as {
       workflowId?: string;
       objectId?: string;
-      objectType?: 'contacts' | 'companies';
+      objectType?: 'contacts' | 'companies' | 'tickets';
     };
 
     if (!body.workflowId || !body.objectId || !body.objectType) {
       throw new ApiError(400, 'Missing required fields: workflowId, objectId, objectType');
     }
 
-    if (!['contacts', 'companies'].includes(body.objectType)) {
-      throw new ApiError(400, 'objectType must be "contacts" or "companies"');
+    if (!['contacts', 'companies', 'tickets'].includes(body.objectType)) {
+      throw new ApiError(400, 'objectType must be "contacts", "companies", or "tickets"');
     }
 
     const hs = getHubSpotClient();
