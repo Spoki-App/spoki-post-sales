@@ -23,7 +23,6 @@ export interface Client {
 }
 
 export interface ClientWithHealth extends Client {
-  healthScore: HealthScore | null;
   onboardingTicket: {
     hubspotId: string;
     pipeline: string | null;
@@ -38,9 +37,15 @@ export interface ClientWithHealth extends Client {
   } | null;
   lastContactDate: string | null;
   lastEngagement: {
+    hubspotId: string | null;
     type: string | null;
     occurredAt: string;
     ownerId: string | null;
+    emailFrom: string | null;
+    emailTo: string | null;
+    callDirection: string | null;
+    callDisposition: string | null;
+    callTitle: string | null;
   } | null;
 }
 
@@ -86,26 +91,6 @@ export interface Engagement {
   occurredAt: string;
   ownerId: string | null;
   title: string | null;
-}
-
-// ─── Health Score ─────────────────────────────────────────────────────────────
-export type HealthStatus = 'green' | 'yellow' | 'red';
-
-export interface HealthScore {
-  id: string;
-  clientId: string;
-  score: number;
-  status: HealthStatus;
-  scoreLastContact: number;
-  scoreTickets: number;
-  scoreOnboarding: number;
-  scoreRenewal: number;
-  daysSinceLastContact: number | null;
-  openTicketsCount: number;
-  openHighTicketsCount: number;
-  onboardingPct: number;
-  daysToRenewal: number | null;
-  calculatedAt: string;
 }
 
 // ─── Task ─────────────────────────────────────────────────────────────────────

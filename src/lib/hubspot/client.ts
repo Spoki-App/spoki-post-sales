@@ -472,7 +472,7 @@ class HubSpotClient {
           method: 'POST',
           data: {
             inputs: slice.map(id => ({ id })),
-            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source'],
+            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source', 'hs_email_from_email', 'hs_email_from_firstname', 'hs_email_from_lastname', 'hs_email_to_email', 'hs_email_to_firstname', 'hs_email_to_lastname', 'hs_call_direction', 'hs_call_disposition', 'hs_call_title', 'hs_call_to_number'],
           },
         });
         const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
@@ -541,7 +541,7 @@ class HubSpotClient {
           method: 'POST',
           data: {
             inputs: slice.map(id => ({ id })),
-            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source'],
+            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source', 'hs_email_from_email', 'hs_email_from_firstname', 'hs_email_from_lastname', 'hs_email_to_email', 'hs_email_to_firstname', 'hs_email_to_lastname', 'hs_call_direction', 'hs_call_disposition', 'hs_call_title', 'hs_call_to_number'],
           },
         });
         const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
@@ -579,7 +579,7 @@ class HubSpotClient {
       const response = await this.http.get('/crm/v3/objects/engagements', {
         params: {
           limit: 100,
-          properties: 'hs_engagement_type,hs_timestamp,hubspot_owner_id,hs_engagement_source',
+          properties: 'hs_engagement_type,hs_timestamp,hubspot_owner_id,hs_engagement_source,hs_email_from_email,hs_email_from_firstname,hs_email_from_lastname,hs_email_to_email,hs_email_to_firstname,hs_email_to_lastname,hs_call_direction,hs_call_disposition,hs_call_title,hs_call_to_number',
           associations: 'companies,contacts',
           ...(after ? { after } : {}),
         },

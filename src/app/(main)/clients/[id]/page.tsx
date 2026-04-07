@@ -4,7 +4,6 @@ import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi, tasksApi, onboardingApi } from '@/lib/api/client';
-import { HealthBadge } from '@/components/ui/HealthBadge';
 import { Badge } from '@/components/ui/Badge';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import type { OnboardingStageType } from '@/lib/config/pipelines';
@@ -13,18 +12,16 @@ import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
 import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus } from '@/types';
+import type { Client, Ticket, Engagement, Contact, Task, OnboardingProgress } from '@/types';
 
 type ClientWithStage = Client & {
-  healthScore: HealthScore | null;
   onboardingStage?: string | null;
   onboardingStageType?: string | null;
 };
 
-type Tab = 'overview' | 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts';
+type Tab = 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
   { id: 'activities', label: 'Attività' },
   { id: 'tickets', label: 'Ticket' },
   { id: 'onboarding', label: 'Onboarding' },
@@ -33,37 +30,47 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const ENGAGEMENT_ICONS: Record<string, string> = {
-  CALL: '📞', EMAIL: '✉️', MEETING: '🤝', NOTE: '📝', TASK: '✅',
+  CALL: '📞', EMAIL: '✉️', MEETING: '🤝', NOTE: '📝', TASK: '✅', INCOMING_EMAIL: '📩', FORWARDED_EMAIL: '↗️',
 };
 
-function ScoreBar({ label, value, max = 25 }: { label: string; value: number; max?: number }) {
-  const pct = (value / max) * 100;
-  return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-slate-600">{label}</span>
-        <span className="font-medium text-slate-900">{value}/{max}</span>
-      </div>
-      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+const ENGAGEMENT_LABELS: Record<string, string> = {
+  CALL: 'Chiamata', EMAIL: 'Email', MEETING: 'Meeting', NOTE: 'Nota', TASK: 'Task',
+  INCOMING_EMAIL: 'Email ricevuta', FORWARDED_EMAIL: 'Email inoltrata',
+};
+
+const CALL_DISPOSITIONS: Record<string, string> = {
+  'f240bbac-87c9-4f6e-bf70-924b57d47db7': 'Connected',
+  '73a0d17f-1163-4015-bdd5-ec830791da20': 'No answer',
+  '9d9162e7-6cf3-4944-bf63-4dff82258764': 'Busy',
+  'db37fe00-d85a-48ca-9d40-4804618badb7': 'Hung up',
+  'b2cf5968-551e-4856-9783-52b3da59a7d0': 'Left voicemail',
+  'a4c4c377-d246-4b32-a13b-75a56a4cd0ff': 'Left message',
+  'ce83dc56-e767-4510-b02f-4c68126e8154': 'Unreachable',
+  '17b47fee-58de-441e-a44c-c6300d46f273': 'Wrong number',
+  'e66e054e-e6cd-4b16-8cb3-2e0425cf1ceb': 'Attemping',
+  'b9460aeb-2920-4fb2-b4ff-f74290eaf362': 'Activation Failed',
+  'da6760a4-13e3-4778-a8d1-7e6af09565e4': 'Technical issue',
+  '9d6999c0-0232-4010-9cb9-a7cea1c4f4fd': 'Blocked',
+  '6e625bfd-4d6c-4d7a-85ef-5e9251635c81': 'Invalid format',
+};
 
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { token } = useAuthStore();
   const [client, setClient] = useState<ClientWithStage | null>(null);
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('activities');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
+  const [onboardingHistory, setOnboardingHistory] = useState<{
+    steps: Array<{ id: string; label: string; completedAt: string | null }>;
+    currentStage: string | null;
+    currentStageId: string | null;
+    ticketHubspotId: string | null;
+    issues: Array<{ label: string; occurredAt: string }>;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [roleTab, setRoleTab] = useState<string>('all');
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
@@ -95,6 +102,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     if (tab === 'tasks' && tasks.length === 0) {
       tasksApi.list(token, { clientId: id }).then(r => setTasks(r.data ?? []));
     }
+    if (tab === 'onboarding' && !onboardingHistory) {
+      clientsApi.getOnboardingHistory(token, id).then(r => setOnboardingHistory(r.data ?? null));
+    }
     if (tab === 'onboarding' && !onboarding) {
       onboardingApi.getProgress(token, id).then(r => setOnboarding(r.data ?? null));
     }
@@ -112,7 +122,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     return <div className="p-6 text-slate-500">Cliente non trovato.</div>;
   }
 
-  const hs = client.healthScore;
   const renewalDays = client.renewalDate ? differenceInDays(new Date(client.renewalDate), new Date()) : null;
 
   return (
@@ -159,7 +168,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               size="md"
             />
           )}
-          {hs && <HealthBadge status={hs.status as HealthStatus} score={hs.score} />}
         </div>
       </div>
 
@@ -213,60 +221,48 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         ))}
       </div>
 
-      {/* Tab content */}
-      {tab === 'overview' && hs && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader><CardTitle>Breakdown Health Score</CardTitle></CardHeader>
-            <div className="space-y-3">
-              <ScoreBar label="Ultimo contatto" value={hs.scoreLastContact} />
-              <ScoreBar label="Ticket aperti" value={hs.scoreTickets} />
-              <ScoreBar label="Onboarding" value={hs.scoreOnboarding} />
-              <ScoreBar label="Rinnovo" value={hs.scoreRenewal} />
-            </div>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Dettagli</CardTitle></CardHeader>
-            <dl className="space-y-2.5 text-sm">
-              {[
-                ['Giorni dall\'ultimo contatto', hs.daysSinceLastContact !== null ? `${hs.daysSinceLastContact} giorni` : 'N/D'],
-                ['Ticket aperti', String(hs.openTicketsCount)],
-                ['Ticket alta priorità', String(hs.openHighTicketsCount)],
-                ['Onboarding completato', `${hs.onboardingPct}%`],
-                ['Giorni al rinnovo', hs.daysToRenewal !== null ? `${hs.daysToRenewal} giorni` : 'N/D'],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <dt className="text-slate-500">{label}</dt>
-                  <dd className="font-medium text-slate-900">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </Card>
-        </div>
-      )}
-
-      {tab === 'overview' && !hs && (
-        <Card><p className="text-slate-400 text-sm text-center py-8">Health score non ancora calcolato. Avvia una sync HubSpot.</p></Card>
-      )}
-
       {tab === 'activities' && (
         <Card padding="none">
           {engagements.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center py-8">Nessuna attività registrata.</p>
+            <p className="text-slate-400 text-sm text-center py-8">Nessuna attivita' registrata.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {engagements.map(e => (
-                <li key={e.id} className="flex items-start gap-3 px-5 py-3">
-                  <span className="text-lg mt-0.5">{ENGAGEMENT_ICONS[e.type] ?? '📌'}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900">{e.type}</p>
-                    {e.title && <p className="text-sm text-slate-500 truncate">{e.title}</p>}
-                  </div>
-                  <p className="text-xs text-slate-400 shrink-0">
-                    {formatDistanceToNow(new Date(e.occurredAt), { addSuffix: true, locale: it })}
-                  </p>
-                </li>
-              ))}
+              {engagements.map(e => {
+                const eng = e as typeof e & { emailFrom?: string; emailTo?: string; callDirection?: string; callDisposition?: string; callTitle?: string };
+                return (
+                  <li key={e.id}>
+                    <a
+                      href={e.type === 'CALL'
+                        ? `https://app-eu1.hubspot.com/contacts/47964451/company/${client.hubspotId}/?engagement=${e.hubspotId}`
+                        : `https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${client.hubspotId}/view/1?engagement=${e.hubspotId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-start gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="text-lg mt-0.5">{ENGAGEMENT_ICONS[e.type] ?? '📌'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900">
+                          {ENGAGEMENT_LABELS[e.type] ?? e.type}
+                          {e.type === 'CALL' && eng.callDirection && (
+                            <span className="font-normal text-slate-400"> ({eng.callDirection === 'INBOUND' ? 'in entrata' : 'in uscita'})</span>
+                          )}
+                        </p>
+                        {e.type === 'CALL' ? (
+                          <>
+                            {eng.callTitle && <p className="text-sm text-slate-500 truncate">{eng.callTitle}</p>}
+                            {eng.callDisposition && <p className="text-xs text-slate-400">{CALL_DISPOSITIONS[eng.callDisposition] ?? eng.callDisposition}</p>}
+                          </>
+                        ) : (e.type === 'EMAIL' || e.type === 'INCOMING_EMAIL' || e.type === 'FORWARDED_EMAIL') && eng.emailFrom ? (
+                          <p className="text-sm text-slate-500">{eng.emailFrom} → {eng.emailTo ?? '—'}</p>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-slate-400 shrink-0">
+                        {formatDistanceToNow(new Date(e.occurredAt), { addSuffix: true, locale: it })}
+                      </p>
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
@@ -311,49 +307,98 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       )}
 
       {tab === 'onboarding' && (
-        <Card>
-          {!onboarding ? (
-            <div className="text-center py-8">
-              <p className="text-slate-400 text-sm mb-4">Nessun onboarding avviato per questo cliente.</p>
-            </div>
-          ) : (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <CardTitle>Progresso onboarding</CardTitle>
-                <span className="text-sm font-semibold text-slate-700">{Math.round(onboarding.pctComplete)}%</span>
+        <div className="space-y-4">
+          <Card>
+            {!onboardingHistory || onboardingHistory.steps.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400 text-sm">Nessun ticket di onboarding trovato per questo cliente.</p>
               </div>
-              <div className="h-2 bg-slate-100 rounded-full mb-5 overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${onboarding.pctComplete}%` }}
-                />
-              </div>
+            ) : (() => {
+              const completed = onboardingHistory.steps.filter(s => s.completedAt).length;
+              const total = onboardingHistory.steps.length;
+              const pct = Math.round((completed / total) * 100);
+              const isComplete = onboardingHistory.currentStageId === '1005076483';
+
+              return (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <CardTitle>Progresso onboarding</CardTitle>
+                    <div className="flex items-center gap-3">
+                      {onboardingHistory.currentStage && (
+                        <span className="text-xs text-slate-500">
+                          Stato attuale: <span className="font-medium text-slate-700">{onboardingHistory.currentStage}</span>
+                        </span>
+                      )}
+                      <span className={`text-sm font-semibold ${isComplete ? 'text-emerald-600' : 'text-slate-700'}`}>{pct}%</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full mb-6 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <ul className="space-y-1">
+                    {onboardingHistory.steps.map((step, i) => {
+                      const done = !!step.completedAt;
+                      const isCurrent = step.id === onboardingHistory.currentStageId;
+                      return (
+                        <li key={step.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-blue-50' : ''}`}>
+                          <div className="flex items-center justify-center w-6">
+                            {done ? (
+                              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            ) : isCurrent ? (
+                              <div className="w-5 h-5 rounded-full border-2 border-blue-500 bg-blue-500 flex items-center justify-center">
+                                <div className="w-2 h-2 rounded-full bg-white" />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-full border-2 border-slate-200" />
+                            )}
+                            {i < onboardingHistory.steps.length - 1 && (
+                              <div className={`absolute ml-[9px] mt-10 w-0.5 h-4 ${done ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-blue-700 font-medium' : 'text-slate-400'}`}>
+                              {step.label}
+                            </p>
+                          </div>
+                          {step.completedAt && (
+                            <p className="text-xs text-slate-400 shrink-0">
+                              {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })()}
+          </Card>
+
+          {onboardingHistory?.issues && onboardingHistory.issues.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Problemi riscontrati</CardTitle></CardHeader>
               <ul className="space-y-2">
-                {onboarding.steps.map(step => (
-                  <li key={step.id} className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      step.completedAt ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'
-                    }`}>
-                      {step.completedAt && (
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className={`text-sm ${step.completedAt ? 'line-through text-slate-400' : 'text-slate-700'}`}>{step.label}</p>
-                      {step.completedAt && (
-                        <p className="text-xs text-slate-400">
-                          Completato {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
-                        </p>
-                      )}
-                    </div>
+                {onboardingHistory.issues.map((issue, i) => (
+                  <li key={i} className="flex items-center justify-between">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                      {issue.label}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {format(new Date(issue.occurredAt), 'd MMM yyyy', { locale: it })}
+                    </span>
                   </li>
                 ))}
               </ul>
-            </div>
+            </Card>
           )}
-        </Card>
+        </div>
       )}
 
       {tab === 'tasks' && (

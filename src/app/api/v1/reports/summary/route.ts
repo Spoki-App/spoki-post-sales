@@ -4,17 +4,8 @@ import { pgQuery } from '@/lib/db/postgres';
 
 export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedRequest) => {
   try {
-    const [clientsStats, healthStats, tasksStats, alertsStats, renewalStats] = await Promise.all([
+    const [clientsStats, tasksStats, alertsStats, renewalStats] = await Promise.all([
       pgQuery<{ total: string }>('SELECT COUNT(*) AS total FROM clients'),
-      pgQuery<{ status: string; count: string; total_mrr: string | null }>(
-        `SELECT hs.status, COUNT(*) AS count, SUM(c.mrr) AS total_mrr
-         FROM (
-           SELECT DISTINCT ON (client_id) client_id, status
-           FROM health_scores ORDER BY client_id, calculated_at DESC
-         ) hs
-         JOIN clients c ON c.id = hs.client_id
-         GROUP BY hs.status`
-      ),
       pgQuery<{ status: string; count: string }>(
         `SELECT status, COUNT(*) AS count FROM tasks
          WHERE status NOT IN ('done', 'cancelled') GROUP BY status`
@@ -37,18 +28,9 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
       ),
     ]);
 
-    const healthMap = Object.fromEntries(
-      healthStats.rows.map(r => [r.status, { count: parseInt(r.count), totalMrr: parseFloat(r.total_mrr ?? '0') }])
-    );
-
     return createSuccessResponse({
       data: {
         totalClients: parseInt(clientsStats.rows[0]?.total ?? '0'),
-        health: {
-          green: healthMap['green'] ?? { count: 0, totalMrr: 0 },
-          yellow: healthMap['yellow'] ?? { count: 0, totalMrr: 0 },
-          red: healthMap['red'] ?? { count: 0, totalMrr: 0 },
-        },
         openAlerts: parseInt(alertsStats.rows[0]?.count ?? '0'),
         tasks: Object.fromEntries(tasksStats.rows.map(r => [r.status, parseInt(r.count)])),
         renewals: Object.fromEntries(renewalStats.rows.map(r => [

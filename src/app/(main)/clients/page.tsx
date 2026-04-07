@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
-import { HealthBadge } from '@/components/ui/HealthBadge';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Search, ChevronRight, RefreshCw } from 'lucide-react';
@@ -14,7 +13,7 @@ import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail } from '@/lib/config/owners';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
-import type { ClientWithHealth, HealthStatus } from '@/types';
+import type { ClientWithHealth } from '@/types';
 
 const TICKET_PIPELINES: Record<string, string> = {
   '0': 'Onboarding',
@@ -59,6 +58,57 @@ const TICKET_STAGES: Record<string, string> = {
   '3531706582': 'Closed',
 };
 
+const ONBOARDING_HAPPY_PATH: { id: string; label: string }[] = [
+  { id: '1', label: 'Deal Won' },
+  { id: '1011192836', label: 'Call Booked' },
+  { id: '2', label: 'Activated' },
+  { id: '2071331018', label: 'Training Booked' },
+  { id: '3071245506', label: 'Training Done' },
+  { id: '1709021391', label: 'Follow up 1' },
+  { id: '2724350144', label: 'Follow up 2' },
+  { id: '2724350145', label: 'Follow up 3' },
+  { id: '1005076483', label: 'Post Onboarding' },
+];
+
+const ONBOARDING_PROBLEM_STAGES = new Set([
+  '2702656701', '2712273122', '4013788352', '1004962561',
+  '1004887980', '4524518615', '4524518616',
+]);
+
+function OnboardingProgress({ stageId }: { stageId: string | null }) {
+  if (!stageId) return <span className="text-slate-400 text-xs">—</span>;
+
+  const label = TICKET_STAGES[stageId] ?? stageId;
+
+  if (ONBOARDING_PROBLEM_STAGES.has(stageId)) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+        {label}
+      </span>
+    );
+  }
+
+  const stepIndex = ONBOARDING_HAPPY_PATH.findIndex(s => s.id === stageId);
+  if (stepIndex === -1) return <span className="text-xs text-slate-500">{label}</span>;
+
+  const progress = ((stepIndex + 1) / ONBOARDING_HAPPY_PATH.length) * 100;
+  const isComplete = stepIndex === ONBOARDING_HAPPY_PATH.length - 1;
+
+  return (
+    <div className="min-w-[100px]">
+      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1">
+        <div
+          className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-blue-500'}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className={`text-xs ${isComplete ? 'text-emerald-600 font-medium' : 'text-slate-600'}`}>
+        {label}
+      </p>
+    </div>
+  );
+}
+
 const ENGAGEMENT_LABELS: Record<string, string> = {
   CALL: 'Chiamata',
   EMAIL: 'Email',
@@ -69,12 +119,21 @@ const ENGAGEMENT_LABELS: Record<string, string> = {
   FORWARDED_EMAIL: 'Email inoltrata',
 };
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'Tutti' },
-  { value: 'red', label: 'Critici' },
-  { value: 'yellow', label: 'Attenzione' },
-  { value: 'green', label: 'Sani' },
-];
+const CALL_DISPOSITIONS: Record<string, string> = {
+  'b9460aeb-2920-4fb2-b4ff-f74290eaf362': 'Activation Failed',
+  'e66e054e-e6cd-4b16-8cb3-2e0425cf1ceb': 'Attemping',
+  '9d9162e7-6cf3-4944-bf63-4dff82258764': 'Busy',
+  'f240bbac-87c9-4f6e-bf70-924b57d47db7': 'Connected',
+  'db37fe00-d85a-48ca-9d40-4804618badb7': 'Hung up',
+  '6e625bfd-4d6c-4d7a-85ef-5e9251635c81': 'Invalid format',
+  'a4c4c377-d246-4b32-a13b-75a56a4cd0ff': 'Left message',
+  'b2cf5968-551e-4856-9783-52b3da59a7d0': 'Left voicemail',
+  '73a0d17f-1163-4015-bdd5-ec830791da20': 'No answer',
+  '9d6999c0-0232-4010-9cb9-a7cea1c4f4fd': 'Blocked',
+  'da6760a4-13e3-4778-a8d1-7e6af09565e4': 'Technical issue',
+  'ce83dc56-e767-4510-b02f-4c68126e8154': 'Unreachable',
+  '17b47fee-58de-441e-a44c-c6300d46f273': 'Wrong number',
+};
 
 function formatMrr(mrr: number | null) {
   if (!mrr) return '—';
@@ -105,7 +164,6 @@ export default function ClientsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
   const SECTION_LABELS: Record<string, string> = {
@@ -121,7 +179,6 @@ export default function ClientsPage() {
     try {
       const params = {
         page, q,
-        status: statusFilter,
         ...(!isOwner ? { viewAll: true } : { section }),
       } as Parameters<typeof clientsApi.list>[1];
       const res = await clientsApi.list(token, params);
@@ -132,7 +189,7 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, q, statusFilter, isOwner, section]);
+  }, [token, page, q, isOwner, section]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -177,21 +234,6 @@ export default function ClientsPage() {
             Cerca
           </button>
         </form>
-        <div className="flex gap-2">
-          {STATUS_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => { setStatusFilter(opt.value); setPage(1); }}
-              className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-                statusFilter === opt.value
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'text-slate-600 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Table */}
@@ -200,7 +242,7 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'Customer Success Owner', 'Ticket Support', 'Ultimo contatto', 'Rinnovo'].map(h => (
+                {['Azienda', 'Onboarding', 'MRR', 'Piano', 'Customer Success Owner', 'Ticket Support', 'Ultimo contatto', 'Rinnovo'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
                 <th className="w-10" />
@@ -208,9 +250,9 @@ export default function ClientsPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="py-12 text-center text-slate-400">Caricamento...</td></tr>
+                <tr><td colSpan={9} className="py-12 text-center text-slate-400">Caricamento...</td></tr>
               ) : clients.length === 0 ? (
-                <tr><td colSpan={10} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={9} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -235,20 +277,10 @@ export default function ClientsPage() {
                           rel="noreferrer"
                           className="block hover:bg-blue-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
                         >
-                          <p className="text-xs font-medium text-blue-600">Onboarding</p>
-                          <p className="text-xs text-slate-500">
-                            {TICKET_STAGES[c.onboardingTicket.status ?? ''] ?? c.onboardingTicket.status ?? '—'}
-                          </p>
+                          <OnboardingProgress stageId={c.onboardingTicket.status} />
                         </a>
                       ) : (
                         <span className="text-slate-400 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {c.healthScore ? (
-                        <HealthBadge status={c.healthScore.status as HealthStatus} score={c.healthScore.score} size="sm" />
-                      ) : (
-                        <span className="text-slate-400 text-xs">N/D</span>
                       )}
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-700">{formatMrr(c.mrr)}</td>
@@ -279,19 +311,43 @@ export default function ClientsPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {c.lastEngagement ? (
-                        <div>
-                          <p className="text-xs font-medium text-slate-700">
+                        <a
+                          href={c.lastEngagement.type === 'CALL'
+                            ? `https://app-eu1.hubspot.com/contacts/47964451/company/${c.hubspotId}/?engagement=${c.lastEngagement.hubspotId}`
+                            : `https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${c.hubspotId}/view/1?engagement=${c.lastEngagement.hubspotId}`
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block hover:bg-blue-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
+                        >
+                          <p className="text-xs font-medium text-blue-600">
                             {ENGAGEMENT_LABELS[c.lastEngagement.type ?? ''] ?? c.lastEngagement.type ?? '—'}
+                            {c.lastEngagement.type === 'CALL' && c.lastEngagement.callDirection && (
+                              <span className="font-normal text-slate-400"> ({c.lastEngagement.callDirection === 'INBOUND' ? 'in entrata' : 'in uscita'})</span>
+                            )}
                           </p>
-                          <p className="text-xs text-slate-400">
-                            {formatDistanceToNow(new Date(c.lastEngagement.occurredAt), { addSuffix: true, locale: it })}
-                          </p>
-                          {c.lastEngagement.ownerId && (
+                          {c.lastEngagement.type === 'CALL' ? (
+                            <>
+                              {c.lastEngagement.callTitle && (
+                                <p className="text-xs text-slate-400 truncate max-w-[180px]">{c.lastEngagement.callTitle}</p>
+                              )}
+                              {c.lastEngagement.callDisposition && (
+                                <p className="text-xs text-slate-400">{CALL_DISPOSITIONS[c.lastEngagement.callDisposition] ?? c.lastEngagement.callDisposition}</p>
+                              )}
+                            </>
+                          ) : (c.lastEngagement.type === 'EMAIL' || c.lastEngagement.type === 'INCOMING_EMAIL' || c.lastEngagement.type === 'FORWARDED_EMAIL') && c.lastEngagement.emailFrom ? (
+                            <p className="text-xs text-slate-400">
+                              {c.lastEngagement.emailFrom} → {c.lastEngagement.emailTo ?? '—'}
+                            </p>
+                          ) : c.lastEngagement.ownerId ? (
                             <p className="text-xs text-slate-400">
                               {getOwnerName(c.lastEngagement.ownerId)}
                             </p>
-                          )}
-                        </div>
+                          ) : null}
+                          <p className="text-xs text-slate-400">
+                            {formatDistanceToNow(new Date(c.lastEngagement.occurredAt), { addSuffix: true, locale: it })}
+                          </p>
+                        </a>
                       ) : (
                         <span className="text-red-500 text-xs font-medium">Nessun contatto</span>
                       )}

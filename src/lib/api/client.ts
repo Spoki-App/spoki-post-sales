@@ -2,7 +2,7 @@
  * Typed API client for frontend → Next.js API routes communication.
  */
 
-import type { Client, ClientWithHealth, Ticket, Engagement, Contact, HealthScore, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse } from '@/types';
+import type { Client, ClientWithHealth, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse } from '@/types';
 
 async function fetchApi<T>(
   path: string,
@@ -29,20 +29,26 @@ async function fetchApi<T>(
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 export const clientsApi = {
-  list: (token: string, params?: { page?: number; q?: string; status?: string; owner?: string; viewAll?: boolean; section?: string }) => {
+  list: (token: string, params?: { page?: number; q?: string; owner?: string; viewAll?: boolean; section?: string }) => {
     const qs = new URLSearchParams(params as unknown as Record<string, string>).toString();
     return fetchApi<PaginatedResponse<ClientWithHealth>>(`/clients${qs ? `?${qs}` : ''}`, { token });
   },
   get: (token: string, id: string) =>
     fetchApi<ApiResponse<Client>>(`/clients/${id}`, { token }),
-  getHealth: (token: string, id: string) =>
-    fetchApi<ApiResponse<HealthScore>>(`/clients/${id}/health`, { token }),
   getTickets: (token: string, id: string) =>
     fetchApi<ApiResponse<Ticket[]>>(`/clients/${id}/tickets`, { token }),
   getEngagements: (token: string, id: string) =>
     fetchApi<ApiResponse<Engagement[]>>(`/clients/${id}/engagements`, { token }),
   getContacts: (token: string, id: string, role?: string) =>
     fetchApi<ApiResponse<Contact[]>>(`/clients/${id}/contacts${role ? `?role=${encodeURIComponent(role)}` : ''}`, { token }),
+  getOnboardingHistory: (token: string, id: string) =>
+    fetchApi<ApiResponse<{
+      steps: Array<{ id: string; label: string; completedAt: string | null }>;
+      currentStage: string | null;
+      currentStageId: string | null;
+      ticketHubspotId: string | null;
+      issues: Array<{ label: string; occurredAt: string }>;
+    }>>(`/clients/${id}/onboarding-history`, { token }),
 };
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
@@ -107,6 +113,4 @@ export const workflowsApi = {
 export const reportsApi = {
   summary: (token: string) =>
     fetchApi<ApiResponse<Record<string, unknown>>>('/reports/summary', { token }),
-  healthTrend: (token: string, days = 30) =>
-    fetchApi<ApiResponse<Record<string, unknown>>>(`/reports/health-trend?days=${days}`, { token }),
 };

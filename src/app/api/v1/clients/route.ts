@@ -10,7 +10,6 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const pageSize = 25;
     const offset = (page - 1) * pageSize;
     const q = searchParams.get('q') ?? '';
-    const status = searchParams.get('status') ?? '';
     const viewAll = searchParams.get('viewAll') === 'true';
 
     // Auto-filter by logged-in user's HubSpot owner ID across three owner fields.
@@ -34,10 +33,6 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       conditions.push(`c.cs_owner_id = $${idx++}`);
       params.push(owner);
     }
-    if (status) {
-      conditions.push(`hs.status = $${idx++}`);
-      params.push(status);
-    }
     // Section filter: which owner field to match against the logged-in user
     if (ownerFilter) {
       if (ownerSection === 'onboarding') {
@@ -60,13 +55,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countRes = await pgQuery<{ count: string }>(
-      `SELECT COUNT(*) FROM clients c
-       LEFT JOIN LATERAL (
-         SELECT score, status FROM health_scores
-         WHERE client_id = c.id
-         ORDER BY calculated_at DESC LIMIT 1
-       ) hs ON true
-       ${where}`,
+      `SELECT COUNT(*) FROM clients c ${where}`,
       params
     );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
@@ -77,20 +66,19 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       renewal_date: string | null; cs_owner_id: string | null;
       onboarding_status: string | null; onboarding_stage: string | null;
       onboarding_stage_type: string | null; updated_at: string;
-      health_score: string | null; health_status: string | null;
       last_contact_date: string | null;
       ob_hubspot_id: string | null; ob_pipeline: string | null;
       ob_status: string | null; ob_subject: string | null;
       support_count: string | null;
       st_hubspot_id: string | null; st_status: string | null; st_subject: string | null;
-      last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
+      last_engagement_hubspot_id: string | null; last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
+      last_engagement_email_from: string | null; last_engagement_email_to: string | null;
+      last_engagement_call_direction: string | null; last_engagement_call_disposition: string | null; last_engagement_call_title: string | null;
     }>(
       `SELECT
         c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
         c.renewal_date, c.cs_owner_id, c.onboarding_status,
         c.onboarding_stage, c.onboarding_stage_type, c.updated_at,
-        hs.score AS health_score,
-        hs.status AS health_status,
         c.last_contact_date,
         ob.hubspot_id AS ob_hubspot_id,
         ob.pipeline AS ob_pipeline,
@@ -100,18 +88,19 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         st.hubspot_id AS st_hubspot_id,
         st.status AS st_status,
         st.subject AS st_subject,
+        le.hubspot_id AS last_engagement_hubspot_id,
         le.type AS last_engagement_type,
         le.occurred_at AS last_engagement_at,
-        le.owner_id AS last_engagement_owner
+        le.owner_id AS last_engagement_owner,
+        (le.raw_properties::jsonb->>'hs_email_from_firstname') || ' ' || (le.raw_properties::jsonb->>'hs_email_from_lastname') AS last_engagement_email_from,
+        (le.raw_properties::jsonb->>'hs_email_to_firstname') || ' ' || (le.raw_properties::jsonb->>'hs_email_to_lastname') AS last_engagement_email_to,
+        le.raw_properties::jsonb->>'hs_call_direction' AS last_engagement_call_direction,
+        le.raw_properties::jsonb->>'hs_call_disposition' AS last_engagement_call_disposition,
+        le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title
       FROM clients c
       LEFT JOIN LATERAL (
-        SELECT score, status FROM health_scores
-        WHERE client_id = c.id
-        ORDER BY calculated_at DESC LIMIT 1
-      ) hs ON true
-      LEFT JOIN LATERAL (
         SELECT hubspot_id, pipeline, status, subject FROM tickets
-        WHERE client_id = c.id AND closed_at IS NULL AND pipeline = '0'
+        WHERE client_id = c.id AND pipeline = '0'
         ORDER BY opened_at DESC LIMIT 1
       ) ob ON true
       LEFT JOIN LATERAL (
@@ -120,13 +109,13 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         ORDER BY opened_at DESC LIMIT 1
       ) st ON true
       LEFT JOIN LATERAL (
-        SELECT e.type, e.occurred_at, e.owner_id FROM engagements e
+        SELECT e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.raw_properties FROM engagements e
         WHERE e.type IN ('CALL', 'EMAIL', 'MEETING', 'INCOMING_EMAIL')
           AND (e.client_id = c.id OR e.contact_id IN (SELECT co.id FROM contacts co WHERE co.client_id = c.id))
         ORDER BY e.occurred_at DESC LIMIT 1
       ) le ON true
       ${where}
-      ORDER BY hs.score ASC NULLS LAST, c.name ASC
+      ORDER BY c.name ASC
       LIMIT ${pageSize} OFFSET ${offset}`,
       params
     );
@@ -145,10 +134,6 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       onboardingStage: r.onboarding_stage,
       onboardingStageType: r.onboarding_stage_type,
       updatedAt: r.updated_at,
-      healthScore: r.health_score ? {
-        score: parseInt(r.health_score),
-        status: r.health_status as 'green' | 'yellow' | 'red',
-      } : null,
       onboardingTicket: r.ob_hubspot_id ? {
         hubspotId: r.ob_hubspot_id,
         pipeline: r.ob_pipeline,
@@ -163,9 +148,15 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       } : null,
       lastContactDate: r.last_contact_date,
       lastEngagement: r.last_engagement_at ? {
+        hubspotId: r.last_engagement_hubspot_id,
         type: r.last_engagement_type,
         occurredAt: r.last_engagement_at,
         ownerId: r.last_engagement_owner,
+        emailFrom: r.last_engagement_email_from?.trim() || null,
+        emailTo: r.last_engagement_email_to?.trim() || null,
+        callDirection: r.last_engagement_call_direction || null,
+        callDisposition: r.last_engagement_call_disposition || null,
+        callTitle: r.last_engagement_call_title || null,
       } : null,
     }));
 

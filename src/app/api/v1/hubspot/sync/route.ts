@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getHubSpotClient } from '@/lib/hubspot/client';
 import { runFullSync } from '@/lib/hubspot/sync';
-import { calculateAllHealthScores } from '@/lib/health-score/calculator';
 import { verifyCronRequest } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 import { getLogger } from '@/lib/logger';
@@ -73,15 +72,9 @@ async function handleSync(type: string | null): Promise<NextResponse> {
       return NextResponse.json({ success: true, type: 'engagements', count });
     }
 
-    if (type === 'scores') {
-      const result = await calculateAllHealthScores();
-      return NextResponse.json({ success: true, type: 'scores', ...result });
-    }
-
     // Full sync (cron)
     const syncResult = await runFullSync();
-    const healthResult = await calculateAllHealthScores();
-    return NextResponse.json({ success: true, sync: syncResult, healthScores: healthResult });
+    return NextResponse.json({ success: true, sync: syncResult });
   } catch (error) {
     logger.error('Sync failed', { type, error: String(error) });
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
@@ -96,7 +89,7 @@ export async function POST(request: NextRequest) {
   return handleSync(null);
 }
 
-// Manual trigger: GET /api/v1/hubspot/sync?secret=<CRON_SECRET>&type=companies|contacts|tickets|engagements|scores
+// Manual trigger: GET /api/v1/hubspot/sync?secret=<CRON_SECRET>&type=companies|contacts|tickets|engagements
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });

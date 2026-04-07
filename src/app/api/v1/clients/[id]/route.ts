@@ -29,19 +29,6 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
     const client = res.rows[0];
     if (!client) throw new ApiError(404, 'Client not found');
 
-    // Latest health score
-    const healthRes = await pgQuery<{
-      score: number; status: string;
-      score_last_contact: number; score_tickets: number;
-      score_onboarding: number; score_renewal: number;
-      days_since_last_contact: number | null; open_tickets_count: number;
-      open_high_tickets_count: number; onboarding_pct: number;
-      days_to_renewal: number | null; calculated_at: string;
-    }>(
-      `SELECT * FROM health_scores WHERE client_id = $1 ORDER BY calculated_at DESC LIMIT 1`,
-      [id]
-    );
-
     return createSuccessResponse({
       data: {
         id: client.id,
@@ -66,7 +53,6 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
         lastSyncedAt: client.last_synced_at,
         createdAt: client.created_at,
         updatedAt: client.updated_at,
-        healthScore: healthRes.rows[0] ?? null,
       }
     });
   } catch (error) {

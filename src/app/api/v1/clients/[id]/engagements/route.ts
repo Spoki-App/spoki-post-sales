@@ -10,17 +10,28 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
 
     const res = await pgQuery<{
       id: string; hubspot_id: string; type: string; occurred_at: string;
-      owner_id: string | null; title: string | null;
+      owner_id: string | null; title: string | null; raw_properties: string;
     }>(
-      `SELECT id, hubspot_id, type, occurred_at, owner_id, title
-       FROM engagements WHERE client_id = $1 ORDER BY occurred_at DESC LIMIT 100`,
+      `SELECT e.id, e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.title, e.raw_properties::text
+       FROM engagements e
+       LEFT JOIN contacts co ON e.contact_id = co.id
+       WHERE e.client_id = $1 OR co.client_id = $1
+       ORDER BY e.occurred_at DESC LIMIT 100`,
       [id]
     );
 
-    return createSuccessResponse({ data: res.rows.map(e => ({
-      id: e.id, hubspotId: e.hubspot_id, type: e.type,
-      occurredAt: e.occurred_at, ownerId: e.owner_id, title: e.title,
-    })) });
+    return createSuccessResponse({ data: res.rows.map(e => {
+      const rp = JSON.parse(e.raw_properties || '{}');
+      return {
+        id: e.id, hubspotId: e.hubspot_id, type: e.type,
+        occurredAt: e.occurred_at, ownerId: e.owner_id, title: e.title,
+        emailFrom: rp.hs_email_from_firstname ? `${rp.hs_email_from_firstname} ${rp.hs_email_from_lastname ?? ''}`.trim() : null,
+        emailTo: rp.hs_email_to_firstname ? `${rp.hs_email_to_firstname} ${rp.hs_email_to_lastname ?? ''}`.trim() : null,
+        callDirection: rp.hs_call_direction ?? null,
+        callDisposition: rp.hs_call_disposition ?? null,
+        callTitle: rp.hs_call_title ?? null,
+      };
+    }) });
   } catch (error) {
     return createErrorResponse(error);
   }
