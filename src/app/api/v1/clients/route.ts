@@ -78,7 +78,12 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       onboarding_status: string | null; onboarding_stage: string | null;
       onboarding_stage_type: string | null; updated_at: string;
       health_score: string | null; health_status: string | null;
-      open_tickets: string | null; last_contact_date: string | null;
+      last_contact_date: string | null;
+      ob_hubspot_id: string | null; ob_pipeline: string | null;
+      ob_status: string | null; ob_subject: string | null;
+      support_count: string | null;
+      st_hubspot_id: string | null; st_status: string | null; st_subject: string | null;
+      last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
     }>(
       `SELECT
         c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
@@ -86,14 +91,40 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         c.onboarding_stage, c.onboarding_stage_type, c.updated_at,
         hs.score AS health_score,
         hs.status AS health_status,
-        (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL) AS open_tickets,
-        c.last_contact_date
+        c.last_contact_date,
+        ob.hubspot_id AS ob_hubspot_id,
+        ob.pipeline AS ob_pipeline,
+        ob.status AS ob_status,
+        ob.subject AS ob_subject,
+        (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') AS support_count,
+        st.hubspot_id AS st_hubspot_id,
+        st.status AS st_status,
+        st.subject AS st_subject,
+        le.type AS last_engagement_type,
+        le.occurred_at AS last_engagement_at,
+        le.owner_id AS last_engagement_owner
       FROM clients c
       LEFT JOIN LATERAL (
         SELECT score, status FROM health_scores
         WHERE client_id = c.id
         ORDER BY calculated_at DESC LIMIT 1
       ) hs ON true
+      LEFT JOIN LATERAL (
+        SELECT hubspot_id, pipeline, status, subject FROM tickets
+        WHERE client_id = c.id AND closed_at IS NULL AND pipeline = '0'
+        ORDER BY opened_at DESC LIMIT 1
+      ) ob ON true
+      LEFT JOIN LATERAL (
+        SELECT hubspot_id, status, subject FROM tickets
+        WHERE client_id = c.id AND closed_at IS NULL AND pipeline = '1249920186'
+        ORDER BY opened_at DESC LIMIT 1
+      ) st ON true
+      LEFT JOIN LATERAL (
+        SELECT e.type, e.occurred_at, e.owner_id FROM engagements e
+        WHERE e.type IN ('CALL', 'EMAIL', 'MEETING', 'INCOMING_EMAIL')
+          AND (e.client_id = c.id OR e.contact_id IN (SELECT co.id FROM contacts co WHERE co.client_id = c.id))
+        ORDER BY e.occurred_at DESC LIMIT 1
+      ) le ON true
       ${where}
       ORDER BY hs.score ASC NULLS LAST, c.name ASC
       LIMIT ${pageSize} OFFSET ${offset}`,
@@ -118,8 +149,24 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         score: parseInt(r.health_score),
         status: r.health_status as 'green' | 'yellow' | 'red',
       } : null,
-      openTicketsCount: parseInt(r.open_tickets ?? '0'),
+      onboardingTicket: r.ob_hubspot_id ? {
+        hubspotId: r.ob_hubspot_id,
+        pipeline: r.ob_pipeline,
+        status: r.ob_status,
+        subject: r.ob_subject,
+      } : null,
+      supportTicketsCount: parseInt(r.support_count ?? '0'),
+      latestSupportTicket: r.st_hubspot_id ? {
+        hubspotId: r.st_hubspot_id,
+        status: r.st_status,
+        subject: r.st_subject,
+      } : null,
       lastContactDate: r.last_contact_date,
+      lastEngagement: r.last_engagement_at ? {
+        type: r.last_engagement_type,
+        occurredAt: r.last_engagement_at,
+        ownerId: r.last_engagement_owner,
+      } : null,
     }));
 
     return createSuccessResponse({ data, total, page, pageSize });

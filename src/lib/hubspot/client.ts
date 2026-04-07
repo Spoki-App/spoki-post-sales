@@ -500,6 +500,75 @@ class HubSpotClient {
     return results;
   }
 
+  async getEngagementsForContacts(contactHubspotIds: string[]): Promise<HSEngagement[]> {
+    if (contactHubspotIds.length === 0) return [];
+    logger.info(`Fetching engagements for ${contactHubspotIds.length} contacts via associations API`);
+
+    const BATCH = 100;
+    const engagementToContactMap: Record<string, string> = {};
+
+    for (let i = 0; i < contactHubspotIds.length; i += BATCH) {
+      const slice = contactHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/contacts/engagements/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string | number }> }> };
+        for (const item of data.results ?? []) {
+          for (const assoc of item.to ?? []) {
+            const eid = String(assoc.toObjectId);
+            if (!engagementToContactMap[eid]) {
+              engagementToContactMap[eid] = item.from.id;
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn(`Contact engagement associations batch failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+
+    const engagementIds = Object.keys(engagementToContactMap);
+    if (engagementIds.length === 0) return [];
+    logger.info(`Found ${engagementIds.length} unique engagements for contacts`);
+
+    const results: HSEngagement[] = [];
+
+    for (let i = 0; i < engagementIds.length; i += BATCH) {
+      const slice = engagementIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/engagements/batch/read', {}, {
+          method: 'POST',
+          data: {
+            inputs: slice.map(id => ({ id })),
+            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source'],
+          },
+        });
+        const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
+        for (const item of data.results ?? []) {
+          const p = item.properties;
+          const occurredAt = p['hs_timestamp'];
+          if (!occurredAt) continue;
+          results.push({
+            id: item.id,
+            companyId: null,
+            contactId: engagementToContactMap[item.id] ?? null,
+            type: p['hs_engagement_type'] ?? 'UNKNOWN',
+            occurredAt,
+            ownerId: p['hubspot_owner_id'] ?? null,
+            title: p['hs_engagement_source'] ?? null,
+            rawProperties: p as Record<string, unknown>,
+          });
+        }
+      } catch (err) {
+        logger.warn(`Contact engagement batch/read failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+
+    logger.info(`Fetched ${results.length} engagements for contacts`);
+    return results;
+  }
+
   async getEngagements(): Promise<HSEngagement[]> {
     logger.info('Fetching engagements from HubSpot');
 

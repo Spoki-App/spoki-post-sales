@@ -24,8 +24,24 @@ export interface Client {
 
 export interface ClientWithHealth extends Client {
   healthScore: HealthScore | null;
-  openTicketsCount: number;
+  onboardingTicket: {
+    hubspotId: string;
+    pipeline: string | null;
+    status: string | null;
+    subject: string | null;
+  } | null;
+  supportTicketsCount: number;
+  latestSupportTicket: {
+    hubspotId: string;
+    status: string | null;
+    subject: string | null;
+  } | null;
   lastContactDate: string | null;
+  lastEngagement: {
+    type: string | null;
+    occurredAt: string;
+    ownerId: string | null;
+  } | null;
 }
 
 // ─── Contact ──────────────────────────────────────────────────────────────────

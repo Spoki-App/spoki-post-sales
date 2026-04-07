@@ -19,8 +19,8 @@ export const HUBSPOT_COMPANY_PROPS = {
 
   // Custom properties – update with your HubSpot internal names
   mrr: 'mrr',                          // Monthly Recurring Revenue
-  plan: 'plan',                         // Subscription plan (e.g. "starter", "pro", "enterprise")
-  renewalDate: 'renewal_date',          // Contract renewal date
+  plan: 'plan_activated',                // Subscription plan (e.g. "service", "starter", "pro")
+  renewalDate: 'plan_expire_date',      // Plan expiration / renewal date
   companyOwner: 'hubspot_owner_id',      // Company owner (account owner)
   onboardingOwner: 'customer_onboarding_owner', // Who follows onboarding
   successOwner: 'customer_success_owner',       // Who follows CS

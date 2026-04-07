@@ -13,8 +13,61 @@ import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail } from '@/lib/config/owners';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
-import type { OnboardingStageType } from '@/lib/config/pipelines';
+import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth, HealthStatus } from '@/types';
+
+const TICKET_PIPELINES: Record<string, string> = {
+  '0': 'Onboarding',
+  '686100601': 'Customer Success',
+  '1249920186': 'Support',
+  '2159832265': 'Partner Success',
+  '2294629588': 'Onboarding (enterprise)',
+  '2332711113': 'Partner Child Activation',
+  '2568452299': 'CS Direct Customer',
+};
+
+const TICKET_STAGES: Record<string, string> = {
+  '1': 'Deal won', '1011192836': 'Activation Call Booked', '2702656701': 'Activation problems',
+  '2712273122': 'Activation Failed', '2': 'Activated', '2071331018': 'Training Booked',
+  '3071245506': 'Training Done', '4013788352': '10% Usage', '1709021391': 'Follow up Call',
+  '2724350144': 'Follow up Call 2', '2724350145': 'Follow up Call 3', '1004962561': 'Utilizzo 60%',
+  '1004887980': 'Never Activated', '1005076483': 'Post Onboarding', '4524518615': 'Free',
+  '4524518616': 'Withdrawal',
+  '1004887938': 'Onboarding Completed', '3543557342': 'Churn Risk', '1004887939': 'Consumo 30%',
+  '1004887940': 'Consumo 60%', '1004887941': 'Consumo 90%', '3541463287': 'Champion +100%',
+  '3541463288': 'Consumo 0', '3542439142': 'Contract Withdrawal', '4077074626': 'Became Free',
+  '1709441257': 'New', '1709442234': 'Ticket Opened', '1709441258': 'Waiting on contact',
+  '1709441259': 'Waiting on us', '1709442235': 'Waiting IT', '2947580095': 'Waiting Accounting',
+  '1866676440': 'Waiting Tyntec', '1709442237': 'Unsolved', '1709442238': 'Auto Closing',
+  '1709442236': 'Solved',
+  '2947626204': 'Deal Won', '3114449133': 'Child in activation', '2947626205': 'Training 1',
+  '2947626206': 'Training 1 Completed', '3014481137': 'Training 2', '2947679436': 'Training 2 Completed',
+  '2947679437': 'Follow Up 1', '2947679438': 'Follow Up 1 Completed', '3190220012': 'Follow Up 2',
+  '3190220013': 'Follow Up 2 Completed', '3190220014': 'Follow Up 3', '3190220015': 'Follow Up 3 Completed',
+  '2947626207': 'Withdrawal', '3260525811': 'Partner da sentire', '3275318502': 'Pannelli Chiusi',
+  '3453605080': 'Referral',
+  '3129878766': 'Training done', '3399626965': 'Training Not Booked', '3129878765': 'Training booked',
+  '3129878767': 'Training 2 booked', '3129878768': 'Training 2 done', '3129647334': 'Follow up',
+  '3129647335': 'Monitoring 1', '3129647336': 'Call monitoring Invitation',
+  '3403595988': 'Call Monitoring 1 Booked', '3129647337': 'Call monitoring done',
+  '3402852598': 'Follow up 2', '3129647338': 'Monitoring 2', '3403595989': 'Call Monitoring 2 Invitation',
+  '3129647339': 'Call monitoring 2 booked', '3129647340': 'Call monitoring 2 done',
+  '3129647341': 'KPI analisys', '3460498624': 'Raggiungimento Obiettivi',
+  '3188699343': 'Deal Won', '3188699345': 'Activated', '3188699346': 'Activation Problem',
+  '3215026411': 'Banned', '3460496626': 'Mai Attivato', '4522408173': 'Free', '4522408174': 'Withdrawal',
+  '3531706579': 'hh', '3531706580': 'Waiting on contact', '3531706581': 'Waiting on us',
+  '3531706582': 'Closed',
+};
+
+const ENGAGEMENT_LABELS: Record<string, string> = {
+  CALL: 'Chiamata',
+  EMAIL: 'Email',
+  MEETING: 'Meeting',
+  NOTE: 'Nota',
+  TASK: 'Task',
+  INCOMING_EMAIL: 'Email ricevuta',
+  FORWARDED_EMAIL: 'Email inoltrata',
+};
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Tutti' },
@@ -33,13 +86,10 @@ function RenewalCell({ date }: { date: string | null }) {
   const days = differenceInDays(new Date(date), new Date());
   const label = format(new Date(date), 'd MMM yyyy', { locale: it });
   if (days < 0) return <span className="text-slate-400 text-sm">Scaduto</span>;
+  const daysLabel = days <= 0 ? 'oggi' : `tra ${days} gg`;
+  const daysClass = days <= 14 ? 'text-red-600 font-medium' : days <= 30 ? 'text-amber-600' : 'text-slate-400';
   return (
-    <div>
-      <p className="text-sm text-slate-700">{label}</p>
-      <p className={`text-xs ${days <= 14 ? 'text-red-600 font-medium' : days <= 30 ? 'text-amber-600' : 'text-slate-400'}`}>
-        {days <= 0 ? 'oggi' : `tra ${days} gg`}
-      </p>
-    </div>
+    <span className="text-sm text-slate-700">{label} <span className={`text-xs ${daysClass}`}>({daysLabel})</span></span>
   );
 }
 
@@ -95,7 +145,7 @@ export default function ClientsPage() {
   const totalPages = Math.ceil(total / 25);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-[1600px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -150,7 +200,7 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'Customer Success Owner', 'Ultimo contatto', 'Rinnovo'].map(h => (
+                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'Customer Success Owner', 'Ticket Support', 'Ultimo contatto', 'Rinnovo'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
                 <th className="w-10" />
@@ -158,9 +208,9 @@ export default function ClientsPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="py-12 text-center text-slate-400">Caricamento...</td></tr>
+                <tr><td colSpan={10} className="py-12 text-center text-slate-400">Caricamento...</td></tr>
               ) : clients.length === 0 ? (
-                <tr><td colSpan={8} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={10} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -178,11 +228,18 @@ export default function ClientsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {(c as ClientWithHealth & { onboardingStage?: string; onboardingStageType?: string }).onboardingStage ? (
-                        <OnboardingStageBadge
-                          label={(c as ClientWithHealth & { onboardingStage?: string; onboardingStageType?: string }).onboardingStage!}
-                          type={((c as ClientWithHealth & { onboardingStage?: string; onboardingStageType?: string }).onboardingStageType ?? 'normal') as OnboardingStageType}
-                        />
+                      {c.onboardingTicket ? (
+                        <a
+                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${c.onboardingTicket.hubspotId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block hover:bg-blue-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
+                        >
+                          <p className="text-xs font-medium text-blue-600">Onboarding</p>
+                          <p className="text-xs text-slate-500">
+                            {TICKET_STAGES[c.onboardingTicket.status ?? ''] ?? c.onboardingTicket.status ?? '—'}
+                          </p>
+                        </a>
                       ) : (
                         <span className="text-slate-400 text-xs">—</span>
                       )}
@@ -202,19 +259,44 @@ export default function ClientsPage() {
                       {getOwnerName(c.csOwnerId)}
                     </td>
                     <td className="px-4 py-3">
-                      {c.openTicketsCount > 0 ? (
-                        <span className="text-red-600 font-medium">{c.openTicketsCount}</span>
+                      {c.supportTicketsCount > 0 && c.latestSupportTicket ? (
+                        <a
+                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${c.latestSupportTicket.hubspotId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block hover:bg-blue-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
+                        >
+                          <p className="text-xs font-medium text-blue-600">
+                            {c.supportTicketsCount} {c.supportTicketsCount === 1 ? 'ticket' : 'tickets'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {TICKET_STAGES[c.latestSupportTicket.status ?? ''] ?? c.latestSupportTicket.status ?? '—'}
+                          </p>
+                        </a>
                       ) : (
-                        <span className="text-slate-400">0</span>
+                        <span className="text-slate-400">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-500">
-                      {c.lastContactDate
-                        ? formatDistanceToNow(new Date(c.lastContactDate), { addSuffix: true, locale: it })
-                        : <span className="text-red-500 text-xs font-medium">Nessun contatto</span>
-                      }
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {c.lastEngagement ? (
+                        <div>
+                          <p className="text-xs font-medium text-slate-700">
+                            {ENGAGEMENT_LABELS[c.lastEngagement.type ?? ''] ?? c.lastEngagement.type ?? '—'}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {formatDistanceToNow(new Date(c.lastEngagement.occurredAt), { addSuffix: true, locale: it })}
+                          </p>
+                          {c.lastEngagement.ownerId && (
+                            <p className="text-xs text-slate-400">
+                              {getOwnerName(c.lastEngagement.ownerId)}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-red-500 text-xs font-medium">Nessun contatto</span>
+                      )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap min-w-[120px]">
                       <RenewalCell date={c.renewalDate} />
                     </td>
                     <td className="px-4 py-3">

@@ -48,11 +48,28 @@ async function handleSync(type: string | null): Promise<NextResponse> {
 
     if (type === 'engagements') {
       const { syncEngagementsOnly } = await import('@/lib/hubspot/sync');
+
       const companyIdsRes = await pgQuery<{ hubspot_id: string }>('SELECT hubspot_id FROM clients');
       const companyHubspotIds = companyIdsRes.rows.map(r => r.hubspot_id);
       logger.info(`Fetching engagements for ${companyHubspotIds.length} synced companies`);
-      const engagements = await client.getEngagementsForCompanies(companyHubspotIds);
-      const count = await syncEngagementsOnly(engagements);
+      const companyEngagements = await client.getEngagementsForCompanies(companyHubspotIds);
+
+      const contactIdsRes = await pgQuery<{ hubspot_id: string }>('SELECT hubspot_id FROM contacts WHERE client_id IS NOT NULL');
+      const contactHubspotIds = contactIdsRes.rows.map(r => r.hubspot_id);
+      logger.info(`Fetching engagements for ${contactHubspotIds.length} synced contacts`);
+      const contactEngagements = await client.getEngagementsForContacts(contactHubspotIds);
+
+      const seen = new Set(companyEngagements.map(e => e.id));
+      const merged = [...companyEngagements];
+      for (const e of contactEngagements) {
+        if (!seen.has(e.id)) {
+          merged.push(e);
+          seen.add(e.id);
+        }
+      }
+
+      logger.info(`Total unique engagements: ${merged.length} (${companyEngagements.length} from companies, ${contactEngagements.length} from contacts)`);
+      const count = await syncEngagementsOnly(merged);
       return NextResponse.json({ success: true, type: 'engagements', count });
     }
 
