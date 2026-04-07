@@ -150,7 +150,7 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'CS Owner', 'Ultimo contatto', 'Rinnovo'].map(h => (
+                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'Customer Success Owner', 'Ultimo contatto', 'Rinnovo'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
                 <th className="w-10" />

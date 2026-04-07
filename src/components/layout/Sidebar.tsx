@@ -23,7 +23,7 @@ import {
 const CLIENT_SECTIONS = [
   { href: '/clients?section=company', label: 'Company Owner', icon: Building2, section: 'company' },
   { href: '/clients?section=onboarding', label: 'Onboarding Owner', icon: GraduationCap, section: 'onboarding' },
-  { href: '/clients?section=success', label: 'CS Owner', icon: HeartHandshake, section: 'success' },
+  { href: '/clients?section=success', label: 'Customer Success Owner', icon: HeartHandshake, section: 'success' },
 ];
 
 export function Sidebar() {
@@ -65,7 +65,7 @@ export function Sidebar() {
           Dashboard
         </Link>
 
-        {/* Clienti — tre sottovoci per CS owner, vista flat per manager */}
+        {/* Clienti — tre sottovoci per owner, vista flat per manager */}
         {isOwner ? (
           <div>
             <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
