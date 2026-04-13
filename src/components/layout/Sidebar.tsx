@@ -43,11 +43,11 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex flex-col w-60 shrink-0 h-screen bg-slate-900 text-slate-100">
+    <aside className="flex flex-col w-60 shrink-0 h-screen bg-emerald-950 text-emerald-50">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-slate-800">
+      <div className="px-5 py-5 border-b border-emerald-900">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shrink-0">
             <Users className="w-4 h-4 text-white" />
           </div>
           <span className="font-semibold text-sm">Post-Sales CS</span>
@@ -61,7 +61,7 @@ export function Sidebar() {
           href="/dashboard"
           className={cn(
             'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-            pathname === '/dashboard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            pathname === '/dashboard' ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
           )}
         >
           <LayoutDashboard className="w-4 h-4 shrink-0" />
@@ -71,7 +71,7 @@ export function Sidebar() {
         {/* Clienti — tre sottovoci per owner, vista flat per manager */}
         {isOwner ? (
           <div>
-            <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-emerald-400">
               <Users className="w-4 h-4 shrink-0" />
               <span>Clienti</span>
             </div>
@@ -84,7 +84,7 @@ export function Sidebar() {
                     href={href}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                      active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      active ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
                     )}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
@@ -99,7 +99,7 @@ export function Sidebar() {
             href="/clients"
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-              pathname.startsWith('/clients') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              pathname.startsWith('/clients') ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
             )}
           >
             <Users className="w-4 h-4 shrink-0" />
@@ -119,7 +119,7 @@ export function Sidebar() {
             href={href}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-              pathname === href ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              pathname === href ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />
@@ -132,20 +132,20 @@ export function Sidebar() {
       <DbUsageBar />
 
       {/* User + sign out */}
-      <div className="px-3 py-4 border-t border-slate-800">
+      <div className="px-3 py-4 border-t border-emerald-900">
         {user && (
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
-            <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-xs font-semibold text-white shrink-0">
+            <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-xs font-semibold text-white shrink-0">
               {(user.displayName ?? user.email ?? 'U')[0].toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-medium text-slate-200 truncate">{user.displayName ?? user.email}</p>
+              <p className="text-xs font-medium text-emerald-100 truncate">{user.displayName ?? user.email}</p>
             </div>
           </div>
         )}
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-emerald-300 hover:text-white hover:bg-emerald-900 transition-colors"
         >
           <LogOut className="w-4 h-4 shrink-0" />
           Esci
@@ -177,12 +177,12 @@ function DbUsageBar() {
   const color = usage.pct >= 90 ? 'bg-red-500' : usage.pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
 
   return (
-    <div className="px-4 py-3 border-t border-slate-800">
-      <div className="flex items-center gap-2 text-[11px] text-slate-500 mb-1.5">
+    <div className="px-4 py-3 border-t border-emerald-900">
+      <div className="flex items-center gap-2 text-[11px] text-emerald-400 mb-1.5">
         <Database className="w-3 h-3 shrink-0" />
         <span>{usage.pretty} ({usage.pct}%)</span>
       </div>
-      <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+      <div className="w-full h-1.5 bg-emerald-900 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${color}`}
           style={{ width: `${Math.min(usage.pct, 100)}%` }}

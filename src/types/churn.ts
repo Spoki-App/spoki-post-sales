@@ -21,7 +21,7 @@ export const CHURN_STATUS_COLORS: Record<ChurnStatus, string> = {
   contattato: 'text-amber-600 bg-amber-50 border-amber-200',
   nessuna_risposta: 'text-orange-600 bg-orange-50 border-orange-200',
   messaggio_wa: 'text-emerald-600 bg-emerald-50 border-emerald-200',
-  in_trattativa: 'text-blue-600 bg-blue-50 border-blue-200',
+  in_trattativa: 'text-emerald-600 bg-emerald-50 border-emerald-200',
   recuperato: 'text-emerald-700 bg-emerald-50 border-emerald-300',
   perso: 'text-slate-500 bg-slate-50 border-slate-200',
   rinnovato_auto: 'text-teal-600 bg-teal-50 border-teal-200',

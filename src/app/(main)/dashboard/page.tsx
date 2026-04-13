@@ -83,7 +83,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -112,26 +112,26 @@ export default function DashboardPage() {
           title="Clienti totali"
           value={summary?.totalClients ?? '—'}
           icon={Users}
-          color="bg-blue-600"
+          color="bg-emerald-600"
         />
         <KpiCard
           title="Alert attivi"
           value={summary?.openAlerts ?? 0}
           icon={Bell}
-          color="bg-amber-500"
+          color="bg-emerald-500"
         />
         <KpiCard
           title="Rinnovi 30 gg"
           value={summary?.renewals?.['30d']?.count ?? 0}
           sub={summary?.renewals?.['30d'] ? `${formatMrr(summary.renewals['30d'].totalMrr)} MRR` : undefined}
           icon={Calendar}
-          color="bg-emerald-600"
+          color="bg-emerald-700"
         />
         <KpiCard
           title="Task aperti"
           value={openTasks}
           icon={CheckSquare}
-          color="bg-slate-600"
+          color="bg-emerald-800"
         />
       </div>
 
@@ -146,7 +146,7 @@ export default function DashboardPage() {
         <Card padding="none">
           <CardHeader className="px-5 pt-4 pb-3 border-b border-slate-100">
             <CardTitle>Clienti</CardTitle>
-            <Link href="/clients" className="text-xs text-blue-600 hover:underline">Vedi tutti</Link>
+            <Link href="/clients" className="text-xs text-emerald-600 hover:underline">Vedi tutti</Link>
           </CardHeader>
           {previewClients.length === 0 ? (
             <p className="text-center text-sm text-slate-400 py-8">Nessun cliente in elenco.</p>
@@ -170,7 +170,7 @@ export default function DashboardPage() {
         <Card padding="none">
           <CardHeader className="px-5 pt-4 pb-3 border-b border-slate-100">
             <CardTitle>Alert recenti</CardTitle>
-            <Link href="/alerts" className="text-xs text-blue-600 hover:underline">Vedi tutti</Link>
+            <Link href="/alerts" className="text-xs text-emerald-600 hover:underline">Vedi tutti</Link>
           </CardHeader>
           {recentAlerts.length === 0 ? (
             <p className="text-center text-sm text-slate-400 py-8">Nessun alert attivo.</p>
@@ -186,7 +186,7 @@ export default function DashboardPage() {
                       {alert.severity}
                     </Badge>
                     {alert.clientName && (
-                      <Link href={`/clients/${alert.clientId}`} className="text-xs text-blue-600 hover:underline font-medium">
+                      <Link href={`/clients/${alert.clientId}`} className="text-xs text-emerald-600 hover:underline font-medium">
                         {alert.clientName}
                       </Link>
                     )}

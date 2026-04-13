@@ -134,7 +134,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -161,7 +161,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
             {client.domain && (
-              <a href={`https://${client.domain}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-slate-500 hover:text-blue-600">
+              <a href={`https://${client.domain}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-slate-500 hover:text-emerald-600">
                 <Globe className="w-3.5 h-3.5" />{client.domain}
               </a>
             )}
@@ -336,7 +336,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             onClick={() => setTab(t.id)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
-                ? 'border-blue-600 text-blue-600'
+                ? 'border-emerald-600 text-emerald-600'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
@@ -453,7 +453,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                           href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${onboardingHistory.ticketHubspotId}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-xs text-blue-600 hover:text-blue-800"
+                          className="text-xs text-emerald-600 hover:text-emerald-800"
                         >
                           Apri ticket
                         </a>
@@ -470,7 +470,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full mb-6 overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                      className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-green-500'}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -479,7 +479,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       const done = !!step.completedAt;
                       const isCurrent = step.id === onboardingHistory.currentStageId;
                       return (
-                        <li key={step.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-blue-50' : ''}`}>
+                        <li key={step.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-emerald-50' : ''}`}>
                           <div className="flex items-center justify-center w-6">
                             {done ? (
                               <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
@@ -488,7 +488,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 </svg>
                               </div>
                             ) : isCurrent ? (
-                              <div className="w-5 h-5 rounded-full border-2 border-blue-500 bg-blue-500 flex items-center justify-center">
+                              <div className="w-5 h-5 rounded-full border-2 border-emerald-500 bg-emerald-500 flex items-center justify-center">
                                 <div className="w-2 h-2 rounded-full bg-white" />
                               </div>
                             ) : (
@@ -499,7 +499,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-blue-700 font-medium' : 'text-slate-400'}`}>
+                            <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
                               {step.label}
                             </p>
                           </div>
@@ -653,11 +653,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     key={role}
                     onClick={() => setRoleTab(role)}
                     className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                      active ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+                      active ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-700'
                     }`}
                   >
                     {role === 'all' ? 'Tutti' : role}
-                    <span className={`ml-1.5 text-xs ${active ? 'text-blue-500' : 'text-slate-400'}`}>({count})</span>
+                    <span className={`ml-1.5 text-xs ${active ? 'text-emerald-500' : 'text-slate-400'}`}>({count})</span>
                   </button>
                 );
               })}
@@ -695,7 +695,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       {c.communicationRoles?.length ? (
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {c.communicationRoles.map(role => (
-                            <span key={role} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-100">
+                            <span key={role} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 border border-emerald-100">
                               {role}
                             </span>
                           ))}

@@ -78,7 +78,7 @@ function TaskCard({ task, onStatusChange, onDelete }: TaskCardProps) {
         {task.status !== 'done' && (
           <button
             onClick={() => onStatusChange(task.id, task.status === 'todo' ? 'in_progress' : 'done')}
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+            className="text-xs text-emerald-600 hover:text-emerald-800 font-medium"
           >
             {task.status === 'todo' ? 'Inizia' : 'Completa'}
           </button>
@@ -143,7 +143,7 @@ function CreateTaskModal({ onClose, onCreate, clients, token }: CreateTaskModalP
             <input
               required value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="Descrivi il task..."
             />
           </div>
@@ -153,7 +153,7 @@ function CreateTaskModal({ onClose, onCreate, clients, token }: CreateTaskModalP
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               rows={2}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -162,7 +162,7 @@ function CreateTaskModal({ onClose, onCreate, clients, token }: CreateTaskModalP
               <select
                 value={form.priority}
                 onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
@@ -172,7 +172,7 @@ function CreateTaskModal({ onClose, onCreate, clients, token }: CreateTaskModalP
               <input
                 type="date" value={form.dueDate}
                 onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>
@@ -181,7 +181,7 @@ function CreateTaskModal({ onClose, onCreate, clients, token }: CreateTaskModalP
             <select
               value={form.clientId}
               onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">Nessun cliente</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -192,7 +192,7 @@ function CreateTaskModal({ onClose, onCreate, clients, token }: CreateTaskModalP
             <input
               value={form.assignedTo}
               onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="email@azienda.it"
             />
           </div>
@@ -202,7 +202,7 @@ function CreateTaskModal({ onClose, onCreate, clients, token }: CreateTaskModalP
             </button>
             <button
               type="submit" disabled={submitting}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
             >
               {submitting ? 'Creazione...' : 'Crea task'}
             </button>
@@ -259,7 +259,7 @@ export default function TasksPage() {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
         >
           <Plus className="w-4 h-4" /> Nuovo task
         </button>
@@ -267,7 +267,7 @@ export default function TasksPage() {
 
       {/* Kanban board */}
       {loading ? (
-        <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>
+        <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {STATUS_COLUMNS.map(col => {

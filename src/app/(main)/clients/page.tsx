@@ -99,7 +99,7 @@ function OnboardingProgress({ stageId }: { stageId: string | null }) {
     <div className="min-w-[100px]">
       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1">
         <div
-          className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-blue-500'}`}
+          className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-emerald-500'}`}
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -225,10 +225,10 @@ export default function ClientsPage() {
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
               placeholder="Cerca per nome o dominio..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
-          <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          <button type="submit" className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
             Cerca
           </button>
         </form>
@@ -254,7 +254,7 @@ export default function ClientsPage() {
                 ] as const).map(col => (
                   <th
                     key={col.label}
-                    className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide ${col.key ? 'cursor-pointer select-none hover:bg-slate-50 transition-colors' : ''} ${sortBy === col.key ? 'text-blue-600' : 'text-slate-500'}`}
+                    className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide ${col.key ? 'cursor-pointer select-none hover:bg-slate-50 transition-colors' : ''} ${sortBy === col.key ? 'text-emerald-600' : 'text-slate-500'}`}
                     onClick={col.key ? () => {
                       if (sortBy === col.key) {
                         setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -292,7 +292,7 @@ export default function ClientsPage() {
                           href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${c.hubspotId}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="font-medium text-slate-900 hover:text-blue-600 transition-colors"
+                          className="font-medium text-slate-900 hover:text-emerald-600 transition-colors"
                         >
                           {c.name}
                         </a>
@@ -317,7 +317,7 @@ export default function ClientsPage() {
                           href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${c.onboardingTicket.hubspotId}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="block hover:bg-blue-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
+                          className="block hover:bg-emerald-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
                         >
                           <OnboardingProgress stageId={c.onboardingTicket.status} />
                         </a>
@@ -347,9 +347,9 @@ export default function ClientsPage() {
                           href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${c.latestSupportTicket.hubspotId}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="block hover:bg-blue-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
+                          className="block hover:bg-emerald-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
                         >
-                          <p className="text-xs font-medium text-blue-600">
+                          <p className="text-xs font-medium text-emerald-600">
                             {c.supportTicketsCount} {c.supportTicketsCount === 1 ? 'ticket' : 'tickets'}
                           </p>
                           <p className="text-xs text-slate-500">
@@ -369,9 +369,9 @@ export default function ClientsPage() {
                           }
                           target="_blank"
                           rel="noreferrer"
-                          className="block hover:bg-blue-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
+                          className="block hover:bg-emerald-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
                         >
-                          <p className="text-xs font-medium text-blue-600">
+                          <p className="text-xs font-medium text-emerald-600">
                             {ENGAGEMENT_LABELS[c.lastEngagement.type ?? ''] ?? c.lastEngagement.type ?? '—'}
                             {c.lastEngagement.type === 'CALL' && c.lastEngagement.callDirection && (
                               <span className="font-normal text-slate-400"> ({c.lastEngagement.callDirection === 'INBOUND' ? 'in entrata' : 'in uscita'})</span>
@@ -407,7 +407,7 @@ export default function ClientsPage() {
                       <RenewalCell date={c.renewalDate} />
                     </td>
                     <td className="px-4 py-3">
-                      <Link href={`/clients/${c.id}`} className="p-1 text-slate-400 hover:text-blue-600 transition-colors">
+                      <Link href={`/clients/${c.id}`} className="p-1 text-slate-400 hover:text-emerald-600 transition-colors">
                         <ChevronRight className="w-4 h-4" />
                       </Link>
                     </td>

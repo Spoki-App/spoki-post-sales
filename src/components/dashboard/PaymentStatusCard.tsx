@@ -33,7 +33,7 @@ export function PaymentStatusCard({ accountId }: Props) {
       <Card>
         <CardHeader><CardTitle>Pagamenti</CardTitle></CardHeader>
         <div className="h-24 flex items-center justify-center">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
         </div>
       </Card>
     );
@@ -58,7 +58,7 @@ export function PaymentStatusCard({ accountId }: Props) {
           <p className="text-xs text-slate-500">Totale</p>
         </div>
         <div className="text-center">
-          <p className="text-xl font-bold text-blue-600">{formatEur(data.subscriptions.total)}</p>
+          <p className="text-xl font-bold text-emerald-600">{formatEur(data.subscriptions.total)}</p>
           <p className="text-xs text-slate-500">Abbonamenti</p>
         </div>
         <div className="text-center">

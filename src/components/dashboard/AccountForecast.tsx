@@ -16,7 +16,7 @@ const formatEur = (v: number) =>
 const OUTCOME_CONFIG = {
   renew: { label: 'Rinnovo', icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   churn: { label: 'Churn', icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-  expansion: { label: 'Espansione', icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
+  expansion: { label: 'Espansione', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   contraction: { label: 'Contrazione', icon: TrendingDown, color: 'text-amber-600', bg: 'bg-amber-50' },
 } as const;
 
@@ -44,7 +44,7 @@ export function AccountForecast({ accountId }: Props) {
       <Card>
         <CardHeader><CardTitle>Previsione</CardTitle></CardHeader>
         <div className="h-24 flex items-center justify-center">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
         </div>
       </Card>
     );

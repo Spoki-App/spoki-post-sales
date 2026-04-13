@@ -32,7 +32,7 @@ export function SubscriptionTimeline({ accountId }: Props) {
       <Card>
         <CardHeader><CardTitle>Storico abbonamenti</CardTitle></CardHeader>
         <div className="h-24 flex items-center justify-center">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
         </div>
       </Card>
     );
@@ -57,7 +57,7 @@ export function SubscriptionTimeline({ accountId }: Props) {
       <div className="space-y-0">
         {entries.map((entry, i) => (
           <div key={i} className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0">
-            <div className="mt-1 w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+            <div className="mt-1 w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-900">{entry.planSlug}</p>
               <div className="flex items-center gap-3 text-xs text-slate-500">
