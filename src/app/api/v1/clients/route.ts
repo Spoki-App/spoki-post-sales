@@ -18,7 +18,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const loggedInOwner = getOwnerByEmail(auth.email);
     const ownerFilter = viewAll ? null : (loggedInOwner?.id ?? null);
     const ownerSection = searchParams.get('section') ?? 'all';
-    // section: 'all' | 'onboarding' | 'success' | 'company'
+    // section: 'all' | 'onboarding' | 'company'
     const owner = searchParams.get('owner') ?? '';
 
     const conditions: string[] = [];
@@ -42,9 +42,6 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     if (ownerFilter) {
       if (ownerSection === 'onboarding') {
         conditions.push(`c.onboarding_owner_id = $${idx++}`);
-        params.push(ownerFilter);
-      } else if (ownerSection === 'success') {
-        conditions.push(`c.success_owner_id = $${idx++}`);
         params.push(ownerFilter);
       } else if (ownerSection === 'company') {
         conditions.push(`c.cs_owner_id = $${idx++}`);

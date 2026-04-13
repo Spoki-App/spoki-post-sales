@@ -214,3 +214,21 @@ export interface PaginatedResponse<T> {
   page: number;
   pageSize: number;
 }
+
+export interface AccountBriefSections {
+  sintesiCliente: string;
+  featureSummary: string;
+  ticketSummary: string;
+  campagneSummary: string;
+  utilizzoPiattaforma: string;
+  rischioChurn: string;
+  prossimaBestAction: string;
+}
+
+export interface AccountBriefPayload {
+  generatedAt: string;
+  sections: AccountBriefSections;
+  model: string | null;
+  fallback: boolean;
+  context?: Record<string, unknown>;
+}

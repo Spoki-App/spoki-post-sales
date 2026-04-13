@@ -2,7 +2,7 @@
  * Typed API client for frontend → Next.js API routes communication.
  */
 
-import type { Client, ClientWithHealth, Ticket, Engagement, Contact, HealthScore, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse } from '@/types';
+import type { Client, ClientWithHealth, Ticket, Engagement, Contact, HealthScore, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
 
 async function fetchApi<T>(
   path: string,
@@ -43,6 +43,8 @@ export const clientsApi = {
     fetchApi<ApiResponse<Engagement[]>>(`/clients/${id}/engagements`, { token }),
   getContacts: (token: string, id: string, role?: string) =>
     fetchApi<ApiResponse<Contact[]>>(`/clients/${id}/contacts${role ? `?role=${encodeURIComponent(role)}` : ''}`, { token }),
+  getAccountBrief: (token: string, id: string) =>
+    fetchApi<ApiResponse<AccountBriefPayload>>(`/clients/${id}/account-brief`, { method: 'POST', token }),
 };
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────

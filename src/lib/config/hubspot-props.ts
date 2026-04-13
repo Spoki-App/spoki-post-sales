@@ -28,6 +28,8 @@ export const HUBSPOT_COMPANY_PROPS = {
   contractStartDate: 'contract_start_date',
   contractValue: 'contract_value',       // Total contract value (ACV)
   churnRisk: 'churn_risk',              // manual churn risk flag if set
+  /** Company property "Activation call" (date) — internal name from HubSpot */
+  activationCall: 'activation_call',
 } as const;
 
 export const HUBSPOT_CONTACT_PROPS = {

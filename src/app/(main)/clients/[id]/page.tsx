@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi, tasksApi, onboardingApi } from '@/lib/api/client';
@@ -8,12 +8,14 @@ import { HealthBadge } from '@/components/ui/HealthBadge';
 import { Badge } from '@/components/ui/Badge';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import type { OnboardingStageType } from '@/lib/config/pipelines';
+import { MARCO_MANIGRASSI_HUBSPOT_OWNER_ID } from '@/lib/config/owners';
+import { AccountBriefCard } from '@/components/clients/AccountBriefCard';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
 import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus } from '@/types';
+import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus, AccountBriefPayload } from '@/types';
 
 type ClientWithStage = Client & {
   healthScore: HealthScore | null;
@@ -67,6 +69,23 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [loading, setLoading] = useState(true);
   const [roleTab, setRoleTab] = useState<string>('all');
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
+  const [accountBrief, setAccountBrief] = useState<AccountBriefPayload | null>(null);
+  const [accountBriefLoading, setAccountBriefLoading] = useState(false);
+  const [accountBriefError, setAccountBriefError] = useState<string | null>(null);
+
+  const loadAccountBrief = useCallback(async () => {
+    if (!token || !id) return;
+    setAccountBriefLoading(true);
+    setAccountBriefError(null);
+    try {
+      const res = await clientsApi.getAccountBrief(token, id);
+      if (res.data) setAccountBrief(res.data);
+    } catch (e) {
+      setAccountBriefError(e instanceof Error ? e.message : 'Impossibile generare l\'account brief');
+    } finally {
+      setAccountBriefLoading(false);
+    }
+  }, [token, id]);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -80,6 +99,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       }
     })();
   }, [token, id]);
+
+  useEffect(() => {
+    if (!token || !id || !client) return;
+    if (client.csOwnerId !== MARCO_MANIGRASSI_HUBSPOT_OWNER_ID) {
+      setAccountBrief(null);
+      setAccountBriefError(null);
+      return;
+    }
+    loadAccountBrief();
+  }, [token, id, client, loadAccountBrief]);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -162,6 +191,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           {hs && <HealthBadge status={hs.status as HealthStatus} score={hs.score} />}
         </div>
       </div>
+
+      {client.csOwnerId === MARCO_MANIGRASSI_HUBSPOT_OWNER_ID && (
+        <AccountBriefCard
+          brief={accountBrief}
+          loading={accountBriefLoading}
+          error={accountBriefError}
+          onRegenerate={loadAccountBrief}
+        />
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

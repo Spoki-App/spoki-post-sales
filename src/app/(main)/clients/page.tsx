@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { HealthBadge } from '@/components/ui/HealthBadge';
@@ -97,7 +97,16 @@ export default function ClientsPage() {
   const { token } = useAuthStore();
   const { user } = useAuthStore();
   const searchParams = useSearchParams();
-  const section = (searchParams.get('section') ?? 'all') as 'all' | 'onboarding' | 'success' | 'company';
+  const router = useRouter();
+  const rawSection = searchParams.get('section') ?? 'all';
+  const section = (rawSection === 'success' ? 'all' : rawSection) as 'all' | 'onboarding' | 'company';
+
+  useEffect(() => {
+    if (searchParams.get('section') !== 'success') return;
+    const p = new URLSearchParams(searchParams.toString());
+    p.set('section', 'all');
+    router.replace(`/clients?${p.toString()}`);
+  }, [searchParams, router]);
   const isOwner = !!getOwnerByEmail(user?.email ?? '');
 
   const [clients, setClients] = useState<ClientWithHealth[]>([]);
@@ -111,7 +120,6 @@ export default function ClientsPage() {
   const SECTION_LABELS: Record<string, string> = {
     company: 'Company Owner',
     onboarding: 'Customer Onboarding Owner',
-    success: 'Customer Success Owner',
     all: 'Tutti i clienti',
   };
 
@@ -200,7 +208,7 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'Customer Success Owner', 'Ticket Support', 'Ultimo contatto', 'Rinnovo'].map(h => (
+                {['Azienda', 'Onboarding', 'Salute', 'MRR', 'Piano', 'Company Owner', 'Ticket Support', 'Ultimo contatto', 'Rinnovo'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
                 <th className="w-10" />

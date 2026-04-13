@@ -34,6 +34,17 @@ export const config = {
   cron: {
     secret: process.env.CRON_SECRET || '',
   },
+  accountBrief: {
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    marketingMindApiUrl: process.env.MARKETING_MIND_API_URL || '',
+    marketingMindApiKey: process.env.MARKETING_MIND_API_KEY || '',
+    marketingMindFeaturesUrlTemplate:
+      process.env.MARKETING_MIND_FEATURES_URL_TEMPLATE || '',
+    whatsappCampaignsApiUrl: process.env.WHATSAPP_CAMPAIGNS_API_URL || '',
+    whatsappCampaignsApiKey: process.env.WHATSAPP_CAMPAIGNS_API_KEY || '',
+    whatsappCampaignsUrlTemplate: process.env.WHATSAPP_CAMPAIGNS_URL_TEMPLATE || '',
+  },
 };
 
 export function isConfigured(service: 'hubspot' | 'postgres'): boolean {
