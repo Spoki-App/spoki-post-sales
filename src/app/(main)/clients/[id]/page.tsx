@@ -4,68 +4,86 @@ import { useState, useEffect, use, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi, tasksApi, onboardingApi } from '@/lib/api/client';
-import { HealthBadge } from '@/components/ui/HealthBadge';
 import { Badge } from '@/components/ui/Badge';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import type { OnboardingStageType } from '@/lib/config/pipelines';
 import { MARCO_MANIGRASSI_HUBSPOT_OWNER_ID } from '@/lib/config/owners';
 import { AccountBriefCard } from '@/components/clients/AccountBriefCard';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { getOwnerName } from '@/lib/config/owners';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap } from 'lucide-react';
+import { EmailGeneratorModal } from '@/components/ui/EmailGeneratorModal';
+import { QbrModal } from '@/components/ui/QbrModal';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus, AccountBriefPayload } from '@/types';
+import type { Client, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
+import { formatMrrDisplay } from '@/lib/format/mrr';
+import { MrrTrendChart } from '@/components/dashboard/MrrTrendChart';
+import { PaymentStatusCard } from '@/components/dashboard/PaymentStatusCard';
+import { SubscriptionTimeline } from '@/components/dashboard/SubscriptionTimeline';
+import { AccountForecast } from '@/components/dashboard/AccountForecast';
+import { ParetoTag } from '@/components/dashboard/ParetoTag';
 
 type ClientWithStage = Client & {
-  healthScore: HealthScore | null;
   onboardingStage?: string | null;
   onboardingStageType?: string | null;
 };
 
-type Tab = 'overview' | 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts';
+type Tab = 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts' | 'financials';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
   { id: 'activities', label: 'Attività' },
   { id: 'tickets', label: 'Ticket' },
   { id: 'onboarding', label: 'Onboarding' },
   { id: 'tasks', label: 'Task' },
   { id: 'contacts', label: 'Contatti' },
+  { id: 'financials', label: 'Dati Finanziari' },
 ];
 
 const ENGAGEMENT_ICONS: Record<string, string> = {
-  CALL: '📞', EMAIL: '✉️', MEETING: '🤝', NOTE: '📝', TASK: '✅',
+  CALL: '📞', EMAIL: '✉️', MEETING: '🤝', NOTE: '📝', TASK: '✅', INCOMING_EMAIL: '📩', FORWARDED_EMAIL: '↗️',
 };
 
-function ScoreBar({ label, value, max = 25 }: { label: string; value: number; max?: number }) {
-  const pct = (value / max) * 100;
-  return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-slate-600">{label}</span>
-        <span className="font-medium text-slate-900">{value}/{max}</span>
-      </div>
-      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+const ENGAGEMENT_LABELS: Record<string, string> = {
+  CALL: 'Chiamata', EMAIL: 'Email', MEETING: 'Meeting', NOTE: 'Nota', TASK: 'Task',
+  INCOMING_EMAIL: 'Email ricevuta', FORWARDED_EMAIL: 'Email inoltrata',
+};
+
+const CALL_DISPOSITIONS: Record<string, string> = {
+  'f240bbac-87c9-4f6e-bf70-924b57d47db7': 'Connected',
+  '73a0d17f-1163-4015-bdd5-ec830791da20': 'No answer',
+  '9d9162e7-6cf3-4944-bf63-4dff82258764': 'Busy',
+  'db37fe00-d85a-48ca-9d40-4804618badb7': 'Hung up',
+  'b2cf5968-551e-4856-9783-52b3da59a7d0': 'Left voicemail',
+  'a4c4c377-d246-4b32-a13b-75a56a4cd0ff': 'Left message',
+  'ce83dc56-e767-4510-b02f-4c68126e8154': 'Unreachable',
+  '17b47fee-58de-441e-a44c-c6300d46f273': 'Wrong number',
+  'e66e054e-e6cd-4b16-8cb3-2e0425cf1ceb': 'Attemping',
+  'b9460aeb-2920-4fb2-b4ff-f74290eaf362': 'Activation Failed',
+  'da6760a4-13e3-4778-a8d1-7e6af09565e4': 'Technical issue',
+  '9d6999c0-0232-4010-9cb9-a7cea1c4f4fd': 'Blocked',
+  '6e625bfd-4d6c-4d7a-85ef-5e9251635c81': 'Invalid format',
+};
 
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { token } = useAuthStore();
   const [client, setClient] = useState<ClientWithStage | null>(null);
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('activities');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [hubspotTasks, setHubspotTasks] = useState<Engagement[]>([]);
   const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
+  const [onboardingHistory, setOnboardingHistory] = useState<{
+    steps: Array<{ id: string; label: string; completedAt: string | null }>;
+    currentStage: string | null;
+    currentStageId: string | null;
+    ticketHubspotId: string | null;
+    issues: Array<{ label: string; occurredAt: string }>;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [roleTab, setRoleTab] = useState<string>('all');
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
@@ -86,6 +104,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       setAccountBriefLoading(false);
     }
   }, [token, id]);
+
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showQbrModal, setShowQbrModal] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<{
+    summary: string; riskLevel: string; strengths: string[];
+    concerns: string[]; actions: Array<{ title: string; priority: string; description: string }>;
+  } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -121,8 +147,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     if (tab === 'contacts' && contacts.length === 0) {
       clientsApi.getContacts(token, id).then(r => setContacts(r.data ?? []));
     }
-    if (tab === 'tasks' && tasks.length === 0) {
-      tasksApi.list(token, { clientId: id }).then(r => setTasks(r.data ?? []));
+    if (tab === 'tasks' && hubspotTasks.length === 0) {
+      clientsApi.getEngagements(token, id).then(r => {
+        const all = r.data ?? [];
+        setHubspotTasks(all.filter(e => e.type === 'TASK'));
+      });
+    }
+    if (tab === 'onboarding' && !onboardingHistory) {
+      clientsApi.getOnboardingHistory(token, id).then(r => setOnboardingHistory(r.data ?? null));
     }
     if (tab === 'onboarding' && !onboarding) {
       onboardingApi.getProgress(token, id).then(r => setOnboarding(r.data ?? null));
@@ -141,7 +173,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     return <div className="p-6 text-slate-500">Cliente non trovato.</div>;
   }
 
-  const hs = client.healthScore;
   const renewalDays = client.renewalDate ? differenceInDays(new Date(client.renewalDate), new Date()) : null;
 
   return (
@@ -154,7 +185,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       {/* Client header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{client.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold text-slate-900">{client.name}</h1>
+            <ParetoTag accountId={client.hubspotId} />
+          </div>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
             {client.domain && (
               <a href={`https://${client.domain}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-slate-500 hover:text-blue-600">
@@ -175,6 +209,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={async () => {
+              if (!token || aiLoading) return;
+              setAiLoading(true);
+              try {
+                const res = await clientsApi.getAiAnalysis(token, id);
+                setAiAnalysis(res.data ?? null);
+              } catch { /* ignore */ }
+              finally { setAiLoading(false); }
+            }}
+            disabled={aiLoading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
+          >
+            {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Analisi AI
+          </button>
+          <button
+            onClick={() => setShowQbrModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 transition-colors"
+          >
+            <Presentation className="w-4 h-4" />
+            QBR
+          </button>
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors"
+          >
+            <Mail className="w-4 h-4" />
+            Email
+          </button>
+          <button
             onClick={() => setShowWorkflowModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
           >
@@ -188,7 +252,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               size="md"
             />
           )}
-          {hs && <HealthBadge status={hs.status as HealthStatus} score={hs.score} />}
         </div>
       </div>
 
@@ -206,7 +269,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         <Card padding="sm">
           <p className="text-xs text-slate-500 mb-1">MRR</p>
           <p className="text-lg font-semibold text-slate-900">
-            {client.mrr ? new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(client.mrr) : '—'}
+            {formatMrrDisplay(client.mrr)}
           </p>
         </Card>
         <Card padding="sm">
@@ -234,6 +297,76 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         </Card>
       </div>
 
+      {/* AI Analysis */}
+      {aiAnalysis && (
+        <Card className="mb-6 border-purple-200 bg-purple-50/30">
+          <div className="flex items-start gap-3 mb-4">
+            <Sparkles className="w-5 h-5 text-purple-500 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-semibold text-slate-900">Analisi AI</h3>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                  aiAnalysis.riskLevel === 'critical' ? 'bg-red-100 text-red-700' :
+                  aiAnalysis.riskLevel === 'high' ? 'bg-orange-100 text-orange-700' :
+                  aiAnalysis.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
+                  'bg-emerald-100 text-emerald-700'
+                }`}>
+                  Rischio: {aiAnalysis.riskLevel}
+                </span>
+              </div>
+              <p className="text-sm text-slate-600 mb-4">{aiAnalysis.summary}</p>
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                {aiAnalysis.strengths.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-700 mb-1">Punti di forza</p>
+                    <ul className="space-y-1">
+                      {aiAnalysis.strengths.map((s, i) => (
+                        <li key={i} className="text-xs text-slate-600 flex gap-1.5">
+                          <span className="text-emerald-500 shrink-0">+</span>{s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {aiAnalysis.concerns.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-red-700 mb-1">Criticita</p>
+                    <ul className="space-y-1">
+                      {aiAnalysis.concerns.map((c, i) => (
+                        <li key={i} className="text-xs text-slate-600 flex gap-1.5">
+                          <span className="text-red-500 shrink-0">!</span>{c}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              {aiAnalysis.actions.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-700 mb-2">Azioni consigliate</p>
+                  <ul className="space-y-2">
+                    {aiAnalysis.actions.map((a, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Badge
+                          variant={a.priority === 'alta' ? 'danger' : a.priority === 'media' ? 'warning' : 'default'}
+                          size="sm"
+                        >
+                          {a.priority}
+                        </Badge>
+                        <div>
+                          <p className="text-xs font-medium text-slate-800">{a.title}</p>
+                          <p className="text-xs text-slate-500">{a.description}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200 mb-5">
         {TABS.map(t => (
@@ -251,60 +384,48 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         ))}
       </div>
 
-      {/* Tab content */}
-      {tab === 'overview' && hs && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader><CardTitle>Breakdown Health Score</CardTitle></CardHeader>
-            <div className="space-y-3">
-              <ScoreBar label="Ultimo contatto" value={hs.scoreLastContact} />
-              <ScoreBar label="Ticket aperti" value={hs.scoreTickets} />
-              <ScoreBar label="Onboarding" value={hs.scoreOnboarding} />
-              <ScoreBar label="Rinnovo" value={hs.scoreRenewal} />
-            </div>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Dettagli</CardTitle></CardHeader>
-            <dl className="space-y-2.5 text-sm">
-              {[
-                ['Giorni dall\'ultimo contatto', hs.daysSinceLastContact !== null ? `${hs.daysSinceLastContact} giorni` : 'N/D'],
-                ['Ticket aperti', String(hs.openTicketsCount)],
-                ['Ticket alta priorità', String(hs.openHighTicketsCount)],
-                ['Onboarding completato', `${hs.onboardingPct}%`],
-                ['Giorni al rinnovo', hs.daysToRenewal !== null ? `${hs.daysToRenewal} giorni` : 'N/D'],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <dt className="text-slate-500">{label}</dt>
-                  <dd className="font-medium text-slate-900">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </Card>
-        </div>
-      )}
-
-      {tab === 'overview' && !hs && (
-        <Card><p className="text-slate-400 text-sm text-center py-8">Health score non ancora calcolato. Avvia una sync HubSpot.</p></Card>
-      )}
-
       {tab === 'activities' && (
         <Card padding="none">
           {engagements.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center py-8">Nessuna attività registrata.</p>
+            <p className="text-slate-400 text-sm text-center py-8">Nessuna attivita' registrata.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {engagements.map(e => (
-                <li key={e.id} className="flex items-start gap-3 px-5 py-3">
-                  <span className="text-lg mt-0.5">{ENGAGEMENT_ICONS[e.type] ?? '📌'}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900">{e.type}</p>
-                    {e.title && <p className="text-sm text-slate-500 truncate">{e.title}</p>}
-                  </div>
-                  <p className="text-xs text-slate-400 shrink-0">
-                    {formatDistanceToNow(new Date(e.occurredAt), { addSuffix: true, locale: it })}
-                  </p>
-                </li>
-              ))}
+              {engagements.map(e => {
+                const eng = e as typeof e & { emailFrom?: string; emailTo?: string; callDirection?: string; callDisposition?: string; callTitle?: string };
+                return (
+                  <li key={e.id}>
+                    <a
+                      href={e.type === 'CALL'
+                        ? `https://app-eu1.hubspot.com/contacts/47964451/company/${client.hubspotId}/?engagement=${e.hubspotId}`
+                        : `https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${client.hubspotId}/view/1?engagement=${e.hubspotId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-start gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="text-lg mt-0.5">{ENGAGEMENT_ICONS[e.type] ?? '📌'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900">
+                          {ENGAGEMENT_LABELS[e.type] ?? e.type}
+                          {e.type === 'CALL' && eng.callDirection && (
+                            <span className="font-normal text-slate-400"> ({eng.callDirection === 'INBOUND' ? 'in entrata' : 'in uscita'})</span>
+                          )}
+                        </p>
+                        {e.type === 'CALL' ? (
+                          <>
+                            {eng.callTitle && <p className="text-sm text-slate-500 truncate">{eng.callTitle}</p>}
+                            {eng.callDisposition && <p className="text-xs text-slate-400">{CALL_DISPOSITIONS[eng.callDisposition] ?? eng.callDisposition}</p>}
+                          </>
+                        ) : (e.type === 'EMAIL' || e.type === 'INCOMING_EMAIL' || e.type === 'FORWARDED_EMAIL') && eng.emailFrom ? (
+                          <p className="text-sm text-slate-500">{eng.emailFrom} → {eng.emailTo ?? '—'}</p>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-slate-400 shrink-0">
+                        {formatDistanceToNow(new Date(e.occurredAt), { addSuffix: true, locale: it })}
+                      </p>
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
@@ -349,75 +470,166 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       )}
 
       {tab === 'onboarding' && (
-        <Card>
-          {!onboarding ? (
-            <div className="text-center py-8">
-              <p className="text-slate-400 text-sm mb-4">Nessun onboarding avviato per questo cliente.</p>
-            </div>
-          ) : (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <CardTitle>Progresso onboarding</CardTitle>
-                <span className="text-sm font-semibold text-slate-700">{Math.round(onboarding.pctComplete)}%</span>
+        <div className="space-y-4">
+          <Card>
+            {!onboardingHistory || onboardingHistory.steps.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400 text-sm">Nessun ticket di onboarding trovato per questo cliente.</p>
               </div>
-              <div className="h-2 bg-slate-100 rounded-full mb-5 overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${onboarding.pctComplete}%` }}
-                />
-              </div>
+            ) : (() => {
+              const completed = onboardingHistory.steps.filter(s => s.completedAt).length;
+              const total = onboardingHistory.steps.length;
+              const pct = Math.round((completed / total) * 100);
+              const isComplete = onboardingHistory.currentStageId === '1005076483';
+
+              return (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <CardTitle>Progresso onboarding</CardTitle>
+                      {onboardingHistory.ticketHubspotId && (
+                        <a
+                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${onboardingHistory.ticketHubspotId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          Apri ticket
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {onboardingHistory.currentStage && (
+                        <span className="text-xs text-slate-500">
+                          Stato attuale: <span className="font-medium text-slate-700">{onboardingHistory.currentStage}</span>
+                        </span>
+                      )}
+                      <span className={`text-sm font-semibold ${isComplete ? 'text-emerald-600' : 'text-slate-700'}`}>{pct}%</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full mb-6 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <ul className="space-y-1">
+                    {onboardingHistory.steps.map((step, i) => {
+                      const done = !!step.completedAt;
+                      const isCurrent = step.id === onboardingHistory.currentStageId;
+                      return (
+                        <li key={step.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-blue-50' : ''}`}>
+                          <div className="flex items-center justify-center w-6">
+                            {done ? (
+                              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            ) : isCurrent ? (
+                              <div className="w-5 h-5 rounded-full border-2 border-blue-500 bg-blue-500 flex items-center justify-center">
+                                <div className="w-2 h-2 rounded-full bg-white" />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-full border-2 border-slate-200" />
+                            )}
+                            {i < onboardingHistory.steps.length - 1 && (
+                              <div className={`absolute ml-[9px] mt-10 w-0.5 h-4 ${done ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-blue-700 font-medium' : 'text-slate-400'}`}>
+                              {step.label}
+                            </p>
+                          </div>
+                          {step.completedAt && (
+                            <p className="text-xs text-slate-400 shrink-0">
+                              {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })()}
+          </Card>
+
+          {onboardingHistory?.issues && onboardingHistory.issues.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Problemi riscontrati</CardTitle></CardHeader>
               <ul className="space-y-2">
-                {onboarding.steps.map(step => (
-                  <li key={step.id} className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      step.completedAt ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'
-                    }`}>
-                      {step.completedAt && (
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className={`text-sm ${step.completedAt ? 'line-through text-slate-400' : 'text-slate-700'}`}>{step.label}</p>
-                      {step.completedAt && (
-                        <p className="text-xs text-slate-400">
-                          Completato {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
-                        </p>
-                      )}
-                    </div>
+                {onboardingHistory.issues.map((issue, i) => (
+                  <li key={i} className="flex items-center justify-between">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                      {issue.label}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {format(new Date(issue.occurredAt), 'd MMM yyyy', { locale: it })}
+                    </span>
                   </li>
                 ))}
               </ul>
-            </div>
+            </Card>
           )}
-        </Card>
+        </div>
       )}
 
       {tab === 'tasks' && (
         <Card padding="none">
-          {tasks.length === 0 ? (
+          {hubspotTasks.length === 0 ? (
             <p className="text-slate-400 text-sm text-center py-8">Nessun task per questo cliente.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {tasks.map(t => (
-                <li key={t.id} className="px-5 py-3 flex items-center gap-3">
-                  <CheckSquare className={`w-4 h-4 shrink-0 ${t.status === 'done' ? 'text-emerald-500' : 'text-slate-400'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium ${t.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</p>
-                    {t.dueDate && <p className="text-xs text-slate-400">Scadenza: {format(new Date(t.dueDate), 'd MMM yyyy', { locale: it })}</p>}
-                  </div>
-                  <Badge
-                    variant={t.priority === 'high' ? 'danger' : t.priority === 'medium' ? 'warning' : 'default'}
-                    size="sm"
-                  >
-                    {t.priority}
-                  </Badge>
-                </li>
-              ))}
+              {hubspotTasks.map(t => {
+                const task = t as typeof t & { taskSubject?: string; taskStatus?: string; taskPriority?: string; taskType?: string };
+                const isCompleted = task.taskStatus === 'COMPLETED';
+                return (
+                  <li key={t.id}>
+                    <a
+                      href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${client.hubspotId}/view/1?engagement=${t.hubspotId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <CheckSquare className={`w-4 h-4 shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-slate-400'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                          {task.taskSubject || t.title || 'Task'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {task.taskType && <span className="text-xs text-slate-400">{task.taskType}</span>}
+                          {task.taskStatus && <Badge variant={isCompleted ? 'success' : 'info'} size="sm">{task.taskStatus}</Badge>}
+                          {task.taskPriority && task.taskPriority !== 'NONE' && (
+                            <Badge variant={task.taskPriority === 'HIGH' ? 'danger' : task.taskPriority === 'MEDIUM' ? 'warning' : 'default'} size="sm">{task.taskPriority}</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-slate-400">
+                          {formatDistanceToNow(new Date(t.occurredAt), { addSuffix: true, locale: it })}
+                        </p>
+                        {t.ownerId && <p className="text-xs text-slate-400">{getOwnerName(t.ownerId)}</p>}
+                      </div>
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
+      )}
+
+      {tab === 'financials' && (
+        <div className="space-y-4">
+          <MrrTrendChart accountId={client.hubspotId} />
+          <div className="grid md:grid-cols-2 gap-4">
+            <AccountForecast accountId={client.hubspotId} />
+            <PaymentStatusCard accountId={client.hubspotId} />
+          </div>
+          <SubscriptionTimeline accountId={client.hubspotId} />
+        </div>
       )}
 
       <WorkflowEnrollModal
@@ -426,6 +638,18 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         companyHubspotId={client.hubspotId}
         companyName={client.name}
         clientId={id}
+      />
+      <EmailGeneratorModal
+        open={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        clientId={id}
+        clientName={client.name}
+      />
+      <QbrModal
+        open={showQbrModal}
+        onClose={() => setShowQbrModal(false)}
+        clientId={id}
+        clientName={client.name}
       />
 
       {tab === 'contacts' && (() => {

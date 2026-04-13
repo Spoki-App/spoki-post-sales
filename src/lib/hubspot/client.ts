@@ -1,6 +1,6 @@
 /**
  * HubSpot API client for Post-Sales data.
- * Reads companies, contacts, tickets, engagements.
+ * Reads companies, contacts, tickets, engagements, and can derive company MRR from associated deals.
  * Supports workflow listing and enrollment via v4 automation API.
  */
 
@@ -11,9 +11,65 @@ import {
   HUBSPOT_COMPANY_PROPS,
   HUBSPOT_CONTACT_PROPS,
   HUBSPOT_TICKET_PROPS,
+  HUBSPOT_DEAL_PROPS,
+  HUBSPOT_DEAL_SYNC,
 } from '@/lib/config/hubspot-props';
 
 const logger = getLogger('hubspot:client');
+
+/** Properties requested for engagement batch/read and list (email subject/body, meeting notes, call notes). */
+const ENGAGEMENT_BATCH_PROPERTIES = [
+  'hs_engagement_type',
+  'hs_timestamp',
+  'hubspot_owner_id',
+  'hs_engagement_source',
+  'hs_email_from_email',
+  'hs_email_from_firstname',
+  'hs_email_from_lastname',
+  'hs_email_to_email',
+  'hs_email_to_firstname',
+  'hs_email_to_lastname',
+  'hs_email_subject',
+  'hs_email_text',
+  'hs_call_direction',
+  'hs_call_disposition',
+  'hs_call_title',
+  'hs_call_to_number',
+  'hs_call_body',
+  'hs_meeting_title',
+  'hs_meeting_body',
+  'hs_internal_meeting_notes',
+  'hs_task_subject',
+  'hs_task_status',
+  'hs_task_priority',
+  'hs_task_type',
+  'hs_note_body',
+  'hs_body_preview',
+] as const;
+
+function hubspotErrMeta(err: unknown): { status?: number; body?: string; message: string } {
+  const r = err as { response?: { status?: number; data?: unknown }; message?: string };
+  const status = r.response?.status;
+  const data = r.response?.data;
+  const body = data != null ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined;
+  return { status, body, message: r.message ?? String(err) };
+}
+
+/** Company MRR is filled from deals when HubSpot value is missing, invalid, or not positive. */
+export function companyNeedsDealMrrEnrichment(c: HSCompany): boolean {
+  if (c.mrr == null) return true;
+  if (!Number.isFinite(c.mrr)) return true;
+  return c.mrr <= 0;
+}
+
+export interface MrrEnrichmentStats {
+  companiesNeedingMrr: number;
+  companiesWithDealLinks: number;
+  dealsFetched: number;
+  companiesEnriched: number;
+  associationErrors: number;
+  dealBatchErrors: number;
+}
 
 export interface HSCompany {
   id: string;
@@ -67,6 +123,7 @@ export interface HSTicket {
   openedAt: string | null;
   closedAt: string | null;
   lastModifiedAt: string | null;
+  activatedAt: string | null;
   rawProperties: Record<string, unknown>;
 }
 
@@ -420,6 +477,7 @@ class HubSpotClient {
         openedAt: p[HUBSPOT_TICKET_PROPS.createDate] ?? null,
         closedAt: p[HUBSPOT_TICKET_PROPS.closeDate] ?? null,
         lastModifiedAt: p[HUBSPOT_TICKET_PROPS.lastModifiedDate] ?? null,
+        activatedAt: p[HUBSPOT_TICKET_PROPS.activatedAt] ?? null,
         rawProperties: p as Record<string, unknown>,
       })
     );
@@ -472,7 +530,7 @@ class HubSpotClient {
           method: 'POST',
           data: {
             inputs: slice.map(id => ({ id })),
-            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source'],
+            properties: [...ENGAGEMENT_BATCH_PROPERTIES],
           },
         });
         const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
@@ -541,7 +599,7 @@ class HubSpotClient {
           method: 'POST',
           data: {
             inputs: slice.map(id => ({ id })),
-            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source'],
+            properties: [...ENGAGEMENT_BATCH_PROPERTIES],
           },
         });
         const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
@@ -579,7 +637,7 @@ class HubSpotClient {
       const response = await this.http.get('/crm/v3/objects/engagements', {
         params: {
           limit: 100,
-          properties: 'hs_engagement_type,hs_timestamp,hubspot_owner_id,hs_engagement_source',
+          properties: ENGAGEMENT_BATCH_PROPERTIES.join(','),
           associations: 'companies,contacts',
           ...(after ? { after } : {}),
         },
@@ -625,6 +683,12 @@ class HubSpotClient {
     '0-5': 'tickets',
   };
 
+  private static parseWorkflowAllowlist(): Set<string> | null {
+    const raw = process.env.HUBSPOT_WORKFLOW_ALLOWLIST?.trim();
+    if (!raw) return null;
+    return new Set(raw.split(',').map(id => id.trim()).filter(Boolean));
+  }
+
   async getWorkflows(): Promise<Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt: string }>> {
     logger.info('Fetching workflows from HubSpot');
 
@@ -639,9 +703,12 @@ class HubSpotClient {
       after = data.paging?.next?.after;
     } while (after);
 
-    logger.info(`Fetched ${all.length} workflows from HubSpot`);
+    const allowlist = HubSpotClient.parseWorkflowAllowlist();
+    const filtered = allowlist ? all.filter(f => allowlist.has(f.id)) : all;
 
-    return all.map(f => ({
+    logger.info(`Fetched ${all.length} workflows from HubSpot, returning ${filtered.length}${allowlist ? ` (allowlist: ${allowlist.size} IDs)` : ''}`);
+
+    return filtered.map(f => ({
       id: f.id,
       name: f.name ?? `Workflow ${f.id}`,
       isEnabled: f.isEnabled,
@@ -657,16 +724,34 @@ class HubSpotClient {
     tickets: '0-5',
   };
 
+  /**
+   * Maps a v4 flowId to the legacy v2 workflowId via the migration endpoint.
+   * Required because the v2 enrollment endpoint only accepts v2 IDs.
+   */
+  private async mapFlowIdToWorkflowId(flowId: string): Promise<string> {
+    const res = await this.http.post('/automation/v4/workflow-id-mappings/batch/read', {
+      inputs: [{ flowMigrationStatuses: flowId, type: 'FLOW_ID' }],
+    });
+    const data = res.data as { results?: Array<{ flowId: number; workflowId: number }> };
+    const mapped = data.results?.[0]?.workflowId;
+    if (!mapped) throw new Error(`Could not map v4 flowId ${flowId} to v2 workflowId`);
+    return String(mapped);
+  }
+
   async enrollInWorkflow(
     workflowId: string,
     objectId: string,
-    objectType: 'contacts' | 'companies' | 'tickets'
+    objectType: 'contacts' | 'companies' | 'tickets',
+    contactEmail?: string
   ): Promise<void> {
     logger.info(`Enrolling ${objectType} ${objectId} in workflow ${workflowId}`);
 
     if (objectType === 'contacts') {
+      if (!contactEmail) throw new Error('contactEmail is required for contact enrollment');
+      const v2Id = await this.mapFlowIdToWorkflowId(workflowId);
+      logger.info(`Mapped v4 flowId ${workflowId} -> v2 workflowId ${v2Id}`);
       await this.http.post(
-        `/automation/v2/workflows/${workflowId}/enrollments/contacts/${objectId}`,
+        `/automation/v2/workflows/${v2Id}/enrollments/contacts/${encodeURIComponent(contactEmail)}`,
       );
     } else {
       await this.http.post(
@@ -676,6 +761,246 @@ class HubSpotClient {
     }
 
     logger.info(`Successfully enrolled ${objectType} ${objectId} in workflow ${workflowId}`);
+  }
+
+  private async fetchDealIdsForCompany(companyId: string): Promise<string[]> {
+    const res = await this.getWithRetry(`/crm/v4/objects/companies/${companyId}/associations/deals`, {});
+    const data = res.data as { results?: Array<{ toObjectId: string | number }> };
+    return (data.results ?? []).map(r => String(r.toObjectId));
+  }
+
+  /**
+   * Fills `mrr` on companies where HubSpot company MRR is missing or not positive, using associated deals
+   * (closed-won by default). Private app: scope `crm.objects.deals.read` (e lettura associazioni).
+   */
+  async enrichCompaniesMrrFromDeals(companies: HSCompany[]): Promise<MrrEnrichmentStats> {
+    const emptyStats = (): MrrEnrichmentStats => ({
+      companiesNeedingMrr: 0,
+      companiesWithDealLinks: 0,
+      dealsFetched: 0,
+      companiesEnriched: 0,
+      associationErrors: 0,
+      dealBatchErrors: 0,
+    });
+
+    const targets = companies.filter(companyNeedsDealMrrEnrichment);
+    const stats = emptyStats();
+    stats.companiesNeedingMrr = targets.length;
+    if (targets.length === 0) return stats;
+
+    const dealPropList = [
+      HUBSPOT_DEAL_PROPS.mrr,
+      HUBSPOT_DEAL_PROPS.amount,
+      HUBSPOT_DEAL_PROPS.closedWon,
+      HUBSPOT_DEAL_PROPS.dealstage,
+    ];
+    const dealProps = dealPropList.join(',');
+
+    const companyToDealIds = new Map<string, string[]>();
+    const ASSOC_BATCH = 100;
+
+    for (let i = 0; i < targets.length; i += ASSOC_BATCH) {
+      const slice = targets.slice(i, i + ASSOC_BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(c => ({ id: c.id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ from?: { id?: string }; to?: Array<{ toObjectId: string | number }> }>;
+        };
+        for (const row of results ?? []) {
+          const cid = row.from?.id;
+          if (!cid) continue;
+          const ids = (row.to ?? []).map(t => String(t.toObjectId));
+          const prev = companyToDealIds.get(cid) ?? [];
+          companyToDealIds.set(cid, [...new Set([...prev, ...ids])]);
+        }
+      } catch (e) {
+        const { status, body, message } = hubspotErrMeta(e);
+        stats.associationErrors++;
+        logger.warn('HubSpot company→deal associations batch failed; falling back to per-company reads', {
+          status,
+          body,
+          message,
+        });
+        for (const c of slice) {
+          try {
+            const ids = await this.fetchDealIdsForCompany(c.id);
+            if (ids.length === 0) continue;
+            const prev = companyToDealIds.get(c.id) ?? [];
+            companyToDealIds.set(c.id, [...new Set([...prev, ...ids])]);
+          } catch (e2) {
+            const m = hubspotErrMeta(e2);
+            logger.warn('HubSpot company→deal association GET failed', { companyId: c.id, status: m.status, message: m.message });
+          }
+        }
+      }
+    }
+
+    for (const c of targets) {
+      if ((companyToDealIds.get(c.id) ?? []).length > 0) stats.companiesWithDealLinks++;
+    }
+
+    const allDealIds = [...new Set([...companyToDealIds.values()].flat())];
+    if (allDealIds.length === 0) {
+      logger.info('No associated deals found for companies needing MRR from deals');
+      return stats;
+    }
+
+    const dealPropsById = new Map<string, Record<string, string | null>>();
+    const DEAL_BATCH = 100;
+
+    for (let i = 0; i < allDealIds.length; i += DEAL_BATCH) {
+      const batch = allDealIds.slice(i, i + DEAL_BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: { properties: dealPropList, inputs: batch.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ id: string; properties: Record<string, string | null> }>;
+        };
+        for (const r of results ?? []) {
+          dealPropsById.set(r.id, r.properties);
+        }
+      } catch (e) {
+        stats.dealBatchErrors++;
+        const { status, body, message } = hubspotErrMeta(e);
+        logger.warn('HubSpot deals batch/read failed during MRR enrichment', { status, body, message });
+      }
+    }
+
+    stats.dealsFetched = dealPropsById.size;
+
+    const wonStages = HUBSPOT_DEAL_SYNC.wonDealStageIds;
+
+    const closedWon = (p: Record<string, string | null>): boolean => {
+      if (!HUBSPOT_DEAL_SYNC.onlyClosedWonDeals) return true;
+      if (p[HUBSPOT_DEAL_PROPS.closedWon] === 'true') return true;
+      if (wonStages.length > 0) {
+        const st = p[HUBSPOT_DEAL_PROPS.dealstage];
+        return st != null && wonStages.includes(st);
+      }
+      return false;
+    };
+
+    const monthlyFromDeal = (p: Record<string, string | null>): number => {
+      const mrrStr = p[HUBSPOT_DEAL_PROPS.mrr];
+      const mrr = mrrStr != null && mrrStr !== '' ? parseFloat(mrrStr) : NaN;
+      if (Number.isFinite(mrr) && mrr > 0) return mrr;
+      if (HUBSPOT_DEAL_SYNC.fallbackAnnualAmountToMonthly) {
+        const amtStr = p[HUBSPOT_DEAL_PROPS.amount];
+        const amt = amtStr != null && amtStr !== '' ? parseFloat(amtStr) : NaN;
+        if (Number.isFinite(amt) && amt > 0) return amt / 12;
+      }
+      return 0;
+    };
+
+    for (const c of targets) {
+      const dealIds = companyToDealIds.get(c.id);
+      if (!dealIds?.length) continue;
+      let sum = 0;
+      const seen = new Set<string>();
+      for (const did of dealIds) {
+        if (seen.has(did)) continue;
+        seen.add(did);
+        const p = dealPropsById.get(did);
+        if (!p || !closedWon(p)) continue;
+        sum += monthlyFromDeal(p);
+      }
+      if (sum > 0) {
+        c.mrr = Math.round(sum * 100) / 100;
+        stats.companiesEnriched++;
+      }
+    }
+
+    if (stats.companiesEnriched > 0) {
+      logger.info(
+        `Enriched MRR from deals for companies with missing or non-positive HubSpot MRR: ${JSON.stringify(stats)}`
+      );
+    }
+
+    return stats;
+  }
+
+  private static readonly PURCHASE_SOURCE_LABELS: Record<string, string> = {
+    product_led: 'Product Led',
+    Inbound: 'Sales Led',
+    Outbound: 'Sales Led',
+    'Customer Led': 'Customer Led',
+    partner: 'Partner Led',
+  };
+
+  async getPurchaseSourcesForCompanies(companyHubspotIds: string[]): Promise<Record<string, string>> {
+    if (companyHubspotIds.length === 0) return {};
+    logger.info(`Fetching purchase sources for ${companyHubspotIds.length} companies`);
+
+    const BATCH = 100;
+    const companyToDealIds: Record<string, string[]> = {};
+
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string | number }> }> };
+        for (const item of data.results ?? []) {
+          const dealIds = (item.to ?? []).map(a => String(a.toObjectId));
+          if (dealIds.length > 0) companyToDealIds[item.from.id] = dealIds;
+        }
+      } catch (err) {
+        logger.warn(`Deal associations batch failed for slice ${i}`, { error: String(err) });
+      }
+    }
+
+    const allDealIds = [...new Set(Object.values(companyToDealIds).flat())];
+    if (allDealIds.length === 0) return {};
+    logger.info(`Found ${allDealIds.length} deals associated with companies, fetching details`);
+
+    const dealData: Record<string, { source: string | null; pipeline: string | null; stage: string | null; closedate: string | null }> = {};
+
+    for (let i = 0; i < allDealIds.length; i += BATCH) {
+      const slice = allDealIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: {
+            inputs: slice.map(id => ({ id })),
+            properties: ['spoki_purchase_source', 'pipeline', 'dealstage', 'closedate'],
+          },
+        });
+        const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
+        for (const deal of data.results ?? []) {
+          dealData[deal.id] = {
+            source: deal.properties.spoki_purchase_source,
+            pipeline: deal.properties.pipeline,
+            stage: deal.properties.dealstage,
+            closedate: deal.properties.closedate,
+          };
+        }
+      } catch (err) {
+        logger.warn(`Deal batch/read failed for slice ${i}`, { error: String(err) });
+      }
+    }
+
+    const result: Record<string, string> = {};
+    for (const [companyId, dealIds] of Object.entries(companyToDealIds)) {
+      const closedWonDeals = dealIds
+        .map(id => ({ id, ...dealData[id] }))
+        .filter(d => d.pipeline === '671838099' && d.stage === '986053469' && d.source)
+        .sort((a, b) => (a.closedate ?? '').localeCompare(b.closedate ?? ''));
+
+      const firstDeal = closedWonDeals[0];
+      if (firstDeal?.source) {
+        result[companyId] = HubSpotClient.PURCHASE_SOURCE_LABELS[firstDeal.source] ?? firstDeal.source;
+      }
+    }
+
+    logger.info(`Found purchase sources for ${Object.keys(result).length} companies`);
+    return result;
   }
 
   async healthCheck(): Promise<boolean> {

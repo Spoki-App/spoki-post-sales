@@ -8,6 +8,7 @@ export const POST = withAuth(async (request: NextRequest) => {
       workflowId?: string;
       objectId?: string;
       objectType?: 'contacts' | 'companies' | 'tickets';
+      contactEmail?: string;
     };
 
     if (!body.workflowId || !body.objectId || !body.objectType) {
@@ -18,8 +19,12 @@ export const POST = withAuth(async (request: NextRequest) => {
       throw new ApiError(400, 'objectType must be "contacts", "companies", or "tickets"');
     }
 
+    if (body.objectType === 'contacts' && !body.contactEmail) {
+      throw new ApiError(400, 'contactEmail is required for contact enrollment');
+    }
+
     const hs = getHubSpotClient();
-    await hs.enrollInWorkflow(body.workflowId, body.objectId, body.objectType);
+    await hs.enrollInWorkflow(body.workflowId, body.objectId, body.objectType, body.contactEmail);
 
     return createSuccessResponse({ enrolled: true }, 200);
   } catch (error) {

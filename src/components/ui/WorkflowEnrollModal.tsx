@@ -87,7 +87,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
     setEnrolling(workflowId);
     setResult(null);
     try {
-      await workflowsApi.enroll(token, workflowId, currentObjectId, objectType);
+      await workflowsApi.enroll(token, workflowId, currentObjectId, objectType, selectedContact?.email ?? undefined);
       setResult({ key, ok: true });
     } catch (err) {
       setResult({ key, ok: false, error: err instanceof Error ? err.message : 'Errore sconosciuto' });

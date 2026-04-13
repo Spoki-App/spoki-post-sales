@@ -7,6 +7,7 @@ import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
 import { getOwnerByEmail } from '@/lib/config/owners';
 import { cn } from '@/lib/utils/cn';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -17,6 +18,8 @@ import {
   ChevronDown,
   Building2,
   GraduationCap,
+  Database,
+  AlertTriangle,
 } from 'lucide-react';
 
 const CLIENT_SECTIONS = [
@@ -106,6 +109,7 @@ export function Sidebar() {
         {[
           { href: '/tasks', label: 'Task', Icon: CheckSquare },
           { href: '/alerts', label: 'Alert', Icon: Bell },
+          { href: '/churn-tracker', label: 'Churn Tracker', Icon: AlertTriangle },
           { href: '/reports', label: 'Report', Icon: BarChart3 },
         ].map(({ href, label, Icon }) => (
           <Link
@@ -121,6 +125,9 @@ export function Sidebar() {
           </Link>
         ))}
       </nav>
+
+      {/* DB usage */}
+      <DbUsageBar />
 
       {/* User + sign out */}
       <div className="px-3 py-4 border-t border-slate-800">
@@ -143,5 +150,42 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+  );
+}
+
+function DbUsageBar() {
+  const [usage, setUsage] = useState<{ pct: number; pretty: string } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const r = await fetch('/api/v1/system/db-usage');
+        const d = await r.json() as { pct: number; pretty: string };
+        if (mounted) setUsage(d);
+      } catch { /* ignore */ }
+    }
+    load();
+    const iv = setInterval(load, 60_000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, []);
+
+  if (!usage) return null;
+
+  const color = usage.pct >= 90 ? 'bg-red-500' : usage.pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+
+  return (
+    <div className="px-4 py-3 border-t border-slate-800">
+      <div className="flex items-center gap-2 text-[11px] text-slate-500 mb-1.5">
+        <Database className="w-3 h-3 shrink-0" />
+        <span>{usage.pretty} ({usage.pct}%)</span>
+      </div>
+      <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${Math.min(usage.pct, 100)}%` }}
+        />
+      </div>
+    </div>
   );
 }

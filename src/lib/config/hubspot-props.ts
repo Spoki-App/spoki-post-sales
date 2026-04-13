@@ -55,6 +55,7 @@ export const HUBSPOT_TICKET_PROPS = {
   closeDate: 'closed_date',
   ownerId: 'hubspot_owner_id',
   pipeline: 'hs_pipeline',
+  activatedAt: 'hs_date_entered_2',
 } as const;
 
 export const HUBSPOT_ENGAGEMENT_PROPS = {
@@ -62,4 +63,25 @@ export const HUBSPOT_ENGAGEMENT_PROPS = {
   timestamp: 'hs_timestamp',
   ownerId: 'hubspot_owner_id',
   title: 'hs_engagement_source',
+} as const;
+
+export const HUBSPOT_DEAL_PROPS = {
+  mrr: 'mrr',
+  amount: 'amount',
+  closedWon: 'hs_is_closed_won',
+  dealstage: 'dealstage',
+} as const;
+
+/**
+ * Deal rollup when company MRR is null, non-finite, or <= 0 (see enrichCompaniesMrrFromDeals).
+ */
+export const HUBSPOT_DEAL_SYNC = {
+  onlyClosedWonDeals: true,
+  /** If deal has no MRR property set, use amount ÷ 12 (annual contract → monthly). */
+  fallbackAnnualAmountToMonthly: true,
+  /**
+   * Optional HubSpot internal deal stage IDs treated as "won" when combined with hs_is_closed_won.
+   * If non-empty, a deal counts as won if hs_is_closed_won is true OR dealstage is in this list.
+   */
+  wonDealStageIds: [] as readonly string[],
 } as const;
