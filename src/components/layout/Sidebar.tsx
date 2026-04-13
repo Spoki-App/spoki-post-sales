@@ -66,7 +66,7 @@ export function Sidebar() {
           Dashboard
         </Link>
 
-        {/* Clienti — tre sottovoci per owner, vista flat per manager */}
+        {/* Clienti — due sottovoci (company / onboarding), vista flat per manager */}
         {isOwner ? (
           <div>
             <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
