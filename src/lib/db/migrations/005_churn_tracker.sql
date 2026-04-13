@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS churn_notes (
 
 CREATE INDEX IF NOT EXISTS idx_churn_notes_record ON churn_notes(churn_record_id);
 
+DROP TRIGGER IF EXISTS update_churn_records_updated_at ON churn_records;
+
 CREATE TRIGGER update_churn_records_updated_at
   BEFORE UPDATE ON churn_records
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();

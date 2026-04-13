@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
-import { getOwnerByEmail } from '@/lib/config/owners';
+import { getOwnerByEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
 import { cn } from '@/lib/utils/cn';
 import { useEffect, useState } from 'react';
 import {
@@ -20,6 +20,7 @@ import {
   GraduationCap,
   Database,
   AlertTriangle,
+  HeartHandshake,
 } from 'lucide-react';
 
 const CLIENT_SECTIONS = [
@@ -33,6 +34,7 @@ export function Sidebar() {
   const currentSection = searchParams.get('section') ?? '';
   const { user, signOut: clearAuth } = useAuthStore();
   const isOwner = !!getOwnerByEmail(user?.email ?? '');
+  const isCs = isCustomerSuccessTeamMember(getOwnerByEmail(user?.email ?? ''));
 
   async function handleSignOut() {
     const auth = getFirebaseAuth();
@@ -103,6 +105,36 @@ export function Sidebar() {
             <Users className="w-4 h-4 shrink-0" />
             Clienti
           </Link>
+        )}
+
+        {isCs && (
+          <div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
+              <HeartHandshake className="w-4 h-4 shrink-0" />
+              <span>Customer Success</span>
+            </div>
+            <div className="ml-4 space-y-0.5">
+              {[
+                { href: '/customer-success/dashboard', label: 'Dashboard CS' },
+                { href: '/customer-success/pipeline', label: 'Pipeline CS' },
+                { href: '/customer-success/clients', label: 'Clienti CS' },
+              ].map(({ href, label }) => {
+                const active = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      active ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Task, Alert, Report */}

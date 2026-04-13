@@ -61,6 +61,55 @@ export const clientsApi = {
     }>>(`/clients/${id}/onboarding-history`, { token }),
 };
 
+// ─── Customer Success ──────────────────────────────────────────────────────────
+export const customerSuccessApi = {
+  dashboards: (token: string) =>
+    fetchApi<ApiResponse<{ owner: { id: string; name: string }; dashboards: Array<{ title: string; embedUrl: string; openUrl?: string }> }>>(
+      '/customer-success/dashboards',
+      { token }
+    ),
+  clients: (token: string, params?: { page?: number; q?: string }) => {
+    const qs = params ? new URLSearchParams(params as Record<string, string>).toString() : '';
+    return fetchApi<
+      PaginatedResponse<{
+        id: string;
+        hubspotId: string;
+        name: string;
+        domain: string | null;
+        plan: string | null;
+        mrr: number | null;
+        renewalDate: string | null;
+      }>
+    >(`/customer-success/clients${qs ? `?${qs}` : ''}`, { token });
+  },
+  pipeline: (token: string) =>
+    fetchApi<
+      ApiResponse<{
+        cards: Array<{
+          clientId: string;
+          stage: string;
+          name: string;
+          hubspotId: string;
+          mrr: number | null;
+          activatedAt: string | null;
+        }>;
+        eligibleToAdd: Array<{ id: string; hubspotId: string; name: string; mrr: number | null }>;
+      }>
+    >('/customer-success/pipeline', { token }),
+  addToPipeline: (token: string, clientId: string) =>
+    fetchApi<ApiResponse<{ ok: boolean }>>('/customer-success/pipeline', {
+      method: 'POST',
+      body: JSON.stringify({ clientId }),
+      token,
+    }),
+  movePipelineStage: (token: string, clientId: string, stage: string) =>
+    fetchApi<ApiResponse<{ ok: boolean }>>(`/customer-success/pipeline/${clientId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage }),
+      token,
+    }),
+};
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 export const tasksApi = {
   list: (token: string, params?: { page?: number; status?: string; assignedTo?: string; clientId?: string }) => {
