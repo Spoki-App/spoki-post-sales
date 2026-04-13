@@ -8,18 +8,27 @@ import { Badge } from '@/components/ui/Badge';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import type { OnboardingStageType } from '@/lib/config/pipelines';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { getOwnerName } from '@/lib/config/owners';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap } from 'lucide-react';
+import { EmailGeneratorModal } from '@/components/ui/EmailGeneratorModal';
+import { QbrModal } from '@/components/ui/QbrModal';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import type { Client, Ticket, Engagement, Contact, Task, OnboardingProgress } from '@/types';
+import { formatMrrDisplay } from '@/lib/format/mrr';
+import { MrrTrendChart } from '@/components/dashboard/MrrTrendChart';
+import { PaymentStatusCard } from '@/components/dashboard/PaymentStatusCard';
+import { SubscriptionTimeline } from '@/components/dashboard/SubscriptionTimeline';
+import { AccountForecast } from '@/components/dashboard/AccountForecast';
+import { ParetoTag } from '@/components/dashboard/ParetoTag';
 
 type ClientWithStage = Client & {
   onboardingStage?: string | null;
   onboardingStageType?: string | null;
 };
 
-type Tab = 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts';
+type Tab = 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts' | 'financials';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'activities', label: 'Attività' },
@@ -27,6 +36,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'onboarding', label: 'Onboarding' },
   { id: 'tasks', label: 'Task' },
   { id: 'contacts', label: 'Contatti' },
+  { id: 'financials', label: 'Dati Finanziari' },
 ];
 
 const ENGAGEMENT_ICONS: Record<string, string> = {
@@ -63,6 +73,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [hubspotTasks, setHubspotTasks] = useState<Engagement[]>([]);
   const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
   const [onboardingHistory, setOnboardingHistory] = useState<{
     steps: Array<{ id: string; label: string; completedAt: string | null }>;
@@ -74,6 +85,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [loading, setLoading] = useState(true);
   const [roleTab, setRoleTab] = useState<string>('all');
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showQbrModal, setShowQbrModal] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<{
+    summary: string; riskLevel: string; strengths: string[];
+    concerns: string[]; actions: Array<{ title: string; priority: string; description: string }>;
+  } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -99,8 +117,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     if (tab === 'contacts' && contacts.length === 0) {
       clientsApi.getContacts(token, id).then(r => setContacts(r.data ?? []));
     }
-    if (tab === 'tasks' && tasks.length === 0) {
-      tasksApi.list(token, { clientId: id }).then(r => setTasks(r.data ?? []));
+    if (tab === 'tasks' && hubspotTasks.length === 0) {
+      clientsApi.getEngagements(token, id).then(r => {
+        const all = r.data ?? [];
+        setHubspotTasks(all.filter(e => e.type === 'TASK'));
+      });
     }
     if (tab === 'onboarding' && !onboardingHistory) {
       clientsApi.getOnboardingHistory(token, id).then(r => setOnboardingHistory(r.data ?? null));
@@ -134,7 +155,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       {/* Client header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{client.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold text-slate-900">{client.name}</h1>
+            <ParetoTag accountId={client.hubspotId} />
+          </div>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
             {client.domain && (
               <a href={`https://${client.domain}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-slate-500 hover:text-blue-600">
@@ -154,6 +178,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              if (!token || aiLoading) return;
+              setAiLoading(true);
+              try {
+                const res = await clientsApi.getAiAnalysis(token, id);
+                setAiAnalysis(res.data ?? null);
+              } catch { /* ignore */ }
+              finally { setAiLoading(false); }
+            }}
+            disabled={aiLoading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
+          >
+            {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Analisi AI
+          </button>
+          <button
+            onClick={() => setShowQbrModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 transition-colors"
+          >
+            <Presentation className="w-4 h-4" />
+            QBR
+          </button>
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors"
+          >
+            <Mail className="w-4 h-4" />
+            Email
+          </button>
           <button
             onClick={() => setShowWorkflowModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
@@ -176,7 +230,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         <Card padding="sm">
           <p className="text-xs text-slate-500 mb-1">MRR</p>
           <p className="text-lg font-semibold text-slate-900">
-            {client.mrr ? new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(client.mrr) : '—'}
+            {formatMrrDisplay(client.mrr)}
           </p>
         </Card>
         <Card padding="sm">
@@ -203,6 +257,76 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </p>
         </Card>
       </div>
+
+      {/* AI Analysis */}
+      {aiAnalysis && (
+        <Card className="mb-6 border-purple-200 bg-purple-50/30">
+          <div className="flex items-start gap-3 mb-4">
+            <Sparkles className="w-5 h-5 text-purple-500 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-semibold text-slate-900">Analisi AI</h3>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                  aiAnalysis.riskLevel === 'critical' ? 'bg-red-100 text-red-700' :
+                  aiAnalysis.riskLevel === 'high' ? 'bg-orange-100 text-orange-700' :
+                  aiAnalysis.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
+                  'bg-emerald-100 text-emerald-700'
+                }`}>
+                  Rischio: {aiAnalysis.riskLevel}
+                </span>
+              </div>
+              <p className="text-sm text-slate-600 mb-4">{aiAnalysis.summary}</p>
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                {aiAnalysis.strengths.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-700 mb-1">Punti di forza</p>
+                    <ul className="space-y-1">
+                      {aiAnalysis.strengths.map((s, i) => (
+                        <li key={i} className="text-xs text-slate-600 flex gap-1.5">
+                          <span className="text-emerald-500 shrink-0">+</span>{s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {aiAnalysis.concerns.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-red-700 mb-1">Criticita</p>
+                    <ul className="space-y-1">
+                      {aiAnalysis.concerns.map((c, i) => (
+                        <li key={i} className="text-xs text-slate-600 flex gap-1.5">
+                          <span className="text-red-500 shrink-0">!</span>{c}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              {aiAnalysis.actions.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-700 mb-2">Azioni consigliate</p>
+                  <ul className="space-y-2">
+                    {aiAnalysis.actions.map((a, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Badge
+                          variant={a.priority === 'alta' ? 'danger' : a.priority === 'media' ? 'warning' : 'default'}
+                          size="sm"
+                        >
+                          {a.priority}
+                        </Badge>
+                        <div>
+                          <p className="text-xs font-medium text-slate-800">{a.title}</p>
+                          <p className="text-xs text-slate-500">{a.description}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200 mb-5">
@@ -322,7 +446,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               return (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <CardTitle>Progresso onboarding</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle>Progresso onboarding</CardTitle>
+                      {onboardingHistory.ticketHubspotId && (
+                        <a
+                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${onboardingHistory.ticketHubspotId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          Apri ticket
+                        </a>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3">
                       {onboardingHistory.currentStage && (
                         <span className="text-xs text-slate-500">
@@ -403,28 +539,58 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
       {tab === 'tasks' && (
         <Card padding="none">
-          {tasks.length === 0 ? (
+          {hubspotTasks.length === 0 ? (
             <p className="text-slate-400 text-sm text-center py-8">Nessun task per questo cliente.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {tasks.map(t => (
-                <li key={t.id} className="px-5 py-3 flex items-center gap-3">
-                  <CheckSquare className={`w-4 h-4 shrink-0 ${t.status === 'done' ? 'text-emerald-500' : 'text-slate-400'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium ${t.status === 'done' ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</p>
-                    {t.dueDate && <p className="text-xs text-slate-400">Scadenza: {format(new Date(t.dueDate), 'd MMM yyyy', { locale: it })}</p>}
-                  </div>
-                  <Badge
-                    variant={t.priority === 'high' ? 'danger' : t.priority === 'medium' ? 'warning' : 'default'}
-                    size="sm"
-                  >
-                    {t.priority}
-                  </Badge>
-                </li>
-              ))}
+              {hubspotTasks.map(t => {
+                const task = t as typeof t & { taskSubject?: string; taskStatus?: string; taskPriority?: string; taskType?: string };
+                const isCompleted = task.taskStatus === 'COMPLETED';
+                return (
+                  <li key={t.id}>
+                    <a
+                      href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${client.hubspotId}/view/1?engagement=${t.hubspotId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <CheckSquare className={`w-4 h-4 shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-slate-400'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                          {task.taskSubject || t.title || 'Task'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {task.taskType && <span className="text-xs text-slate-400">{task.taskType}</span>}
+                          {task.taskStatus && <Badge variant={isCompleted ? 'success' : 'info'} size="sm">{task.taskStatus}</Badge>}
+                          {task.taskPriority && task.taskPriority !== 'NONE' && (
+                            <Badge variant={task.taskPriority === 'HIGH' ? 'danger' : task.taskPriority === 'MEDIUM' ? 'warning' : 'default'} size="sm">{task.taskPriority}</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-slate-400">
+                          {formatDistanceToNow(new Date(t.occurredAt), { addSuffix: true, locale: it })}
+                        </p>
+                        {t.ownerId && <p className="text-xs text-slate-400">{getOwnerName(t.ownerId)}</p>}
+                      </div>
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
+      )}
+
+      {tab === 'financials' && (
+        <div className="space-y-4">
+          <MrrTrendChart accountId={client.hubspotId} />
+          <div className="grid md:grid-cols-2 gap-4">
+            <AccountForecast accountId={client.hubspotId} />
+            <PaymentStatusCard accountId={client.hubspotId} />
+          </div>
+          <SubscriptionTimeline accountId={client.hubspotId} />
+        </div>
       )}
 
       <WorkflowEnrollModal
@@ -433,6 +599,18 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         companyHubspotId={client.hubspotId}
         companyName={client.name}
         clientId={id}
+      />
+      <EmailGeneratorModal
+        open={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        clientId={id}
+        clientName={client.name}
+      />
+      <QbrModal
+        open={showQbrModal}
+        onClose={() => setShowQbrModal(false)}
+        clientId={id}
+        clientName={client.name}
       />
 
       {tab === 'contacts' && (() => {

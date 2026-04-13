@@ -3,6 +3,20 @@ import { withAuth, createSuccessResponse, createErrorResponse, type Authenticate
 import { pgQuery } from '@/lib/db/postgres';
 import { getOwnerByEmail } from '@/lib/config/owners';
 
+const SORTABLE_COLUMNS: Record<string, string> = {
+  name: 'c.name',
+  mrr: 'c.mrr',
+  plan: 'c.plan',
+  renewal: 'c.renewal_date',
+  pipeline: 'ob.activated_at',
+  lastContact: 'le.occurred_at',
+  support: 'support_count',
+  owner: 'c.cs_owner_id',
+  source: 'c.purchase_source',
+};
+
+const NULLABLE_SORT_COLUMNS = new Set(['mrr', 'plan', 'renewal', 'pipeline', 'lastContact', 'support', 'owner', 'source']);
+
 export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequest) => {
   try {
     const { searchParams } = new URL(request.url);
@@ -11,6 +25,12 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const offset = (page - 1) * pageSize;
     const q = searchParams.get('q') ?? '';
     const viewAll = searchParams.get('viewAll') === 'true';
+
+    const sortKey = searchParams.get('sort') ?? 'name';
+    const sortDir = searchParams.get('dir') === 'desc' ? 'DESC' : 'ASC';
+    const sortCol = SORTABLE_COLUMNS[sortKey] ?? SORTABLE_COLUMNS.name;
+    const nullsClause = NULLABLE_SORT_COLUMNS.has(sortKey) ? ' NULLS LAST' : '';
+    const orderBy = `${sortCol} ${sortDir}${nullsClause}`;
 
     // Auto-filter by logged-in user's HubSpot owner ID across three owner fields.
     // If not in the owners map → manager/admin → sees all clients.
@@ -65,10 +85,10 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       industry: string | null; plan: string | null; mrr: string | null;
       renewal_date: string | null; cs_owner_id: string | null;
       onboarding_status: string | null; onboarding_stage: string | null;
-      onboarding_stage_type: string | null; updated_at: string;
+      onboarding_stage_type: string | null; purchase_source: string | null; updated_at: string;
       last_contact_date: string | null;
       ob_hubspot_id: string | null; ob_pipeline: string | null;
-      ob_status: string | null; ob_subject: string | null;
+      ob_status: string | null; ob_subject: string | null; ob_activated_at: string | null;
       support_count: string | null;
       st_hubspot_id: string | null; st_status: string | null; st_subject: string | null;
       last_engagement_hubspot_id: string | null; last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
@@ -78,12 +98,13 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       `SELECT
         c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
         c.renewal_date, c.cs_owner_id, c.onboarding_status,
-        c.onboarding_stage, c.onboarding_stage_type, c.updated_at,
+        c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
         c.last_contact_date,
         ob.hubspot_id AS ob_hubspot_id,
         ob.pipeline AS ob_pipeline,
         ob.status AS ob_status,
         ob.subject AS ob_subject,
+        ob.activated_at AS ob_activated_at,
         (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') AS support_count,
         st.hubspot_id AS st_hubspot_id,
         st.status AS st_status,
@@ -99,7 +120,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title
       FROM clients c
       LEFT JOIN LATERAL (
-        SELECT hubspot_id, pipeline, status, subject FROM tickets
+        SELECT hubspot_id, pipeline, status, subject, activated_at FROM tickets
         WHERE client_id = c.id AND pipeline = '0'
         ORDER BY opened_at DESC LIMIT 1
       ) ob ON true
@@ -115,7 +136,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         ORDER BY e.occurred_at DESC LIMIT 1
       ) le ON true
       ${where}
-      ORDER BY c.name ASC
+      ORDER BY ${orderBy}
       LIMIT ${pageSize} OFFSET ${offset}`,
       params
     );
@@ -133,12 +154,14 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       onboardingStatus: r.onboarding_status,
       onboardingStage: r.onboarding_stage,
       onboardingStageType: r.onboarding_stage_type,
+      purchaseSource: r.purchase_source,
       updatedAt: r.updated_at,
       onboardingTicket: r.ob_hubspot_id ? {
         hubspotId: r.ob_hubspot_id,
         pipeline: r.ob_pipeline,
         status: r.ob_status,
         subject: r.ob_subject,
+        activatedAt: r.ob_activated_at,
       } : null,
       supportTicketsCount: parseInt(r.support_count ?? '0'),
       latestSupportTicket: r.st_hubspot_id ? {

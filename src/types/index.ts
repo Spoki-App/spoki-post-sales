@@ -28,6 +28,7 @@ export interface ClientWithHealth extends Client {
     pipeline: string | null;
     status: string | null;
     subject: string | null;
+    activatedAt: string | null;
   } | null;
   supportTicketsCount: number;
   latestSupportTicket: {
@@ -35,6 +36,7 @@ export interface ClientWithHealth extends Client {
     status: string | null;
     subject: string | null;
   } | null;
+  purchaseSource: string | null;
   lastContactDate: string | null;
   lastEngagement: {
     hubspotId: string | null;

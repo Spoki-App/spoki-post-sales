@@ -7,13 +7,14 @@ import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Search, ChevronRight, RefreshCw } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail } from '@/lib/config/owners';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth } from '@/types';
+import { formatMrrDisplay } from '@/lib/format/mrr';
 
 const TICKET_PIPELINES: Record<string, string> = {
   '0': 'Onboarding',
@@ -135,11 +136,6 @@ const CALL_DISPOSITIONS: Record<string, string> = {
   '17b47fee-58de-441e-a44c-c6300d46f273': 'Wrong number',
 };
 
-function formatMrr(mrr: number | null) {
-  if (!mrr) return '—';
-  return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(mrr);
-}
-
 function RenewalCell({ date }: { date: string | null }) {
   if (!date) return <span className="text-slate-400">—</span>;
   const days = differenceInDays(new Date(date), new Date());
@@ -165,6 +161,8 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const SECTION_LABELS: Record<string, string> = {
     company: 'Company Owner',
@@ -178,7 +176,7 @@ export default function ClientsPage() {
     setLoading(true);
     try {
       const params = {
-        page, q,
+        page, q, sort: sortBy, dir: sortDir,
         ...(!isOwner ? { viewAll: true } : { section }),
       } as Parameters<typeof clientsApi.list>[1];
       const res = await clientsApi.list(token, params);
@@ -189,7 +187,7 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, q, isOwner, section]);
+  }, [token, page, q, isOwner, section, sortBy, sortDir]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -242,8 +240,40 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {['Azienda', 'Onboarding', 'MRR', 'Piano', 'Customer Success Owner', 'Ticket Support', 'Ultimo contatto', 'Rinnovo'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                {([
+                  { label: 'Azienda', key: 'name' },
+                  { label: 'Fonte', key: 'source' },
+                  { label: 'Onboarding', key: null },
+                  { label: 'Giorni in pipeline', key: 'pipeline' },
+                  { label: 'MRR', key: 'mrr' },
+                  { label: 'Piano', key: 'plan' },
+                  { label: 'CS Owner', key: 'owner' },
+                  { label: 'Ticket Support', key: 'support' },
+                  { label: 'Ultimo contatto', key: 'lastContact' },
+                  { label: 'Rinnovo', key: 'renewal' },
+                ] as const).map(col => (
+                  <th
+                    key={col.label}
+                    className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide ${col.key ? 'cursor-pointer select-none hover:bg-slate-50 transition-colors' : ''} ${sortBy === col.key ? 'text-blue-600' : 'text-slate-500'}`}
+                    onClick={col.key ? () => {
+                      if (sortBy === col.key) {
+                        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortBy(col.key);
+                        setSortDir(['mrr', 'renewal', 'pipeline', 'lastContact', 'support'].includes(col.key) ? 'desc' : 'asc');
+                      }
+                      setPage(1);
+                    } : undefined}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {col.key && (
+                        sortBy === col.key
+                          ? sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />
+                          : <ChevronsUpDown className="w-3.5 h-3.5 opacity-30" />
+                      )}
+                    </span>
+                  </th>
                 ))}
                 <th className="w-10" />
               </tr>
@@ -269,6 +299,18 @@ export default function ClientsPage() {
                         {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
                       </div>
                     </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {c.purchaseSource ? (
+                        <Badge
+                          variant={c.purchaseSource === 'Product Led' ? 'info' : c.purchaseSource === 'Sales Led' ? 'warning' : c.purchaseSource === 'Partner Led' ? 'success' : 'default'}
+                          size="sm"
+                        >
+                          {c.purchaseSource}
+                        </Badge>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {c.onboardingTicket ? (
                         <a
@@ -283,7 +325,16 @@ export default function ClientsPage() {
                         <span className="text-slate-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-700">{formatMrr(c.mrr)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {c.onboardingTicket?.activatedAt ? (
+                        <span className="text-sm font-medium text-slate-700">
+                          {differenceInDays(new Date(), new Date(c.onboardingTicket.activatedAt))} gg
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-700">{formatMrrDisplay(c.mrr)}</td>
                     <td className="px-4 py-3">
                       {c.plan ? <Badge variant="outline" size="sm">{c.plan}</Badge> : <span className="text-slate-400">—</span>}
                     </td>

@@ -29,7 +29,7 @@ async function fetchApi<T>(
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 export const clientsApi = {
-  list: (token: string, params?: { page?: number; q?: string; owner?: string; viewAll?: boolean; section?: string }) => {
+  list: (token: string, params?: { page?: number; q?: string; owner?: string; viewAll?: boolean; section?: string; sort?: string; dir?: string }) => {
     const qs = new URLSearchParams(params as unknown as Record<string, string>).toString();
     return fetchApi<PaginatedResponse<ClientWithHealth>>(`/clients${qs ? `?${qs}` : ''}`, { token });
   },
@@ -41,6 +41,14 @@ export const clientsApi = {
     fetchApi<ApiResponse<Engagement[]>>(`/clients/${id}/engagements`, { token }),
   getContacts: (token: string, id: string, role?: string) =>
     fetchApi<ApiResponse<Contact[]>>(`/clients/${id}/contacts${role ? `?role=${encodeURIComponent(role)}` : ''}`, { token }),
+  getAiAnalysis: (token: string, id: string) =>
+    fetchApi<ApiResponse<{
+      summary: string;
+      riskLevel: 'low' | 'medium' | 'high' | 'critical';
+      strengths: string[];
+      concerns: string[];
+      actions: Array<{ title: string; priority: string; description: string }>;
+    }>>(`/clients/${id}/ai-analysis`, { method: 'POST', token }),
   getOnboardingHistory: (token: string, id: string) =>
     fetchApi<ApiResponse<{
       steps: Array<{ id: string; label: string; completedAt: string | null }>;
@@ -101,10 +109,50 @@ export const onboardingApi = {
 export const workflowsApi = {
   list: (token: string) =>
     fetchApi<ApiResponse<Workflow[]>>('/hubspot/workflows', { token }),
-  enroll: (token: string, workflowId: string, objectId: string, objectType: 'contacts' | 'companies' | 'tickets') =>
+  enroll: (token: string, workflowId: string, objectId: string, objectType: 'contacts' | 'companies' | 'tickets', contactEmail?: string) =>
     fetchApi<ApiResponse<{ enrolled: boolean }>>('/hubspot/workflows/enroll', {
       method: 'POST',
-      body: JSON.stringify({ workflowId, objectId, objectType }),
+      body: JSON.stringify({ workflowId, objectId, objectType, ...(contactEmail ? { contactEmail } : {}) }),
+      token,
+    }),
+};
+
+// ─── AI ──────────────────────────────────────────────────────────────────────
+export const aiApi = {
+  chat: (token: string, message: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = []) =>
+    fetchApi<ApiResponse<{ message: string }>>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, history }),
+      token,
+    }),
+  portfolioInsights: (token: string) =>
+    fetchApi<ApiResponse<{
+      overview: string;
+      riskDistribution: { low: number; medium: number; high: number; critical: number };
+      topRisks: Array<{ client: string; reason: string }>;
+      topOpportunities: Array<{ client: string; reason: string }>;
+      recommendations: string[];
+    }>>('/ai/portfolio-insights', { method: 'POST', token }),
+  generateQbr: (token: string, clientId: string) =>
+    fetchApi<ApiResponse<Array<{ title: string; content: string; type: string }>>>('/ai/generate-qbr', {
+      method: 'POST',
+      body: JSON.stringify({ clientId }),
+      token,
+    }),
+  generateEmail: (token: string, clientId: string, type: string, customInstructions?: string) =>
+    fetchApi<ApiResponse<{ subject: string; body: string }>>('/ai/generate-email', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, type, customInstructions }),
+      token,
+    }),
+};
+
+// ─── QBR ──────────────────────────────────────────────────────────────────────
+export const qbrApi = {
+  send: (token: string, clientName: string, recipientEmails: string[], pdfBase64: string) =>
+    fetchApi<ApiResponse<{ sent: number }>>('/qbr/send', {
+      method: 'POST',
+      body: JSON.stringify({ clientName, recipientEmails, pdfBase64 }),
       token,
     }),
 };
@@ -113,4 +161,68 @@ export const workflowsApi = {
 export const reportsApi = {
   summary: (token: string) =>
     fetchApi<ApiResponse<Record<string, unknown>>>('/reports/summary', { token }),
+};
+
+// ─── Dashboard Data (Metabase integration) ────────────────────────────────────
+import type {
+  NrrGrrMonth, AccountPayments, SubscriptionHistoryEntry,
+  ChurnRecord, ParetoAnalysis, DailyKpis,
+} from '@/types/dashboard';
+
+export const dashboardDataApi = {
+  mrrHistory: (token: string, accountId?: string) => {
+    const qs = accountId ? `?account_id=${accountId}` : '';
+    return fetchApi<ApiResponse<NrrGrrMonth[]> & { accountMrr?: Array<{ month: string; mrr: number; prevMrr: number; category: string }> }>(
+      `/dashboard-data/mrr-history${qs}`, { token }
+    );
+  },
+  nrrGrr: (token: string) =>
+    fetchApi<ApiResponse<NrrGrrMonth[]>>('/dashboard-data/nrr-grr', { token }),
+  paymentStatus: (token: string, accountId: string) =>
+    fetchApi<ApiResponse<AccountPayments>>(`/dashboard-data/payment-status?account_id=${accountId}`, { token }),
+  subscriptionHistory: (token: string, accountId: string) =>
+    fetchApi<ApiResponse<{ accountId: number; subscriptions: SubscriptionHistoryEntry[] }>>(
+      `/dashboard-data/subscription-history?account_id=${accountId}`, { token }
+    ),
+  churnDetails: (token: string) =>
+    fetchApi<ApiResponse<ChurnRecord[]> & { summary?: { total: number; totalMrrAtRisk: number } }>(
+      '/dashboard-data/churn-details', { token }
+    ),
+  pareto: (token: string, month?: string) => {
+    const qs = month ? `?month=${month}` : '';
+    return fetchApi<ApiResponse<ParetoAnalysis>>(`/dashboard-data/pareto${qs}`, { token });
+  },
+  dailyKpis: (token: string) =>
+    fetchApi<ApiResponse<DailyKpis>>('/dashboard-data/daily-kpis', { token }),
+  forecast: (token: string, accountId: string) =>
+    fetchApi<ApiResponse<{
+      currentMrr: number; forecastMrr: number; trend3m: number;
+      churnRisk: 'low' | 'medium' | 'high';
+      predictedOutcome: 'renew' | 'churn' | 'expansion' | 'contraction';
+      confidence: number;
+    }>>(`/dashboard-data/forecast?account_id=${accountId}`, { token }),
+};
+
+// ─── Churn Tracker ────────────────────────────────────────────────────────────
+import type { ChurnTrackerRecord, ChurnNote, ChurnSummary } from '@/types/churn';
+
+export const churnTrackerApi = {
+  listRecords: (token: string, params?: { filter?: string; status?: string; reason?: string; assigned?: string; q?: string }) => {
+    const qs = params ? new URLSearchParams(params as Record<string, string>).toString() : '';
+    return fetchApi<ApiResponse<ChurnTrackerRecord[]> & { total?: number }>(
+      `/churn-tracker/records${qs ? `?${qs}` : ''}`, { token }
+    );
+  },
+  updateRecord: (token: string, id: string, body: Partial<{ status: string; churnReason: string | null; contactOutcome: string | null; assignedTo: { name: string; email?: string } | null }>) =>
+    fetchApi<ApiResponse<unknown>>(`/churn-tracker/records/${id}`, { method: 'PATCH', body: JSON.stringify(body), token }),
+  batchAction: (token: string, body: { ids: string[]; action: 'status' | 'assign'; status?: string; assignedTo?: { name: string; email?: string } | null }) =>
+    fetchApi<ApiResponse<{ updated: number }>>('/churn-tracker/records/batch', { method: 'POST', body: JSON.stringify(body), token }),
+  getNotes: (token: string, recordId: string) =>
+    fetchApi<ApiResponse<ChurnNote[]>>(`/churn-tracker/records/${recordId}/notes`, { token }),
+  addNote: (token: string, recordId: string, text: string) =>
+    fetchApi<ApiResponse<ChurnNote>>(`/churn-tracker/records/${recordId}/notes`, { method: 'POST', body: JSON.stringify({ text }), token }),
+  sync: (token: string) =>
+    fetchApi<ApiResponse<{ added: number; updated: number; renewed: number; total: number }>>('/churn-tracker/sync', { method: 'POST', token }),
+  summary: (token: string) =>
+    fetchApi<ApiResponse<ChurnSummary>>('/churn-tracker/summary', { token }),
 };

@@ -4,6 +4,7 @@ export interface HubSpotOwner {
   firstName: string;
   lastName: string;
   team: 'Customer Success' | 'Customer Support';
+  bookingUrl?: string;
 }
 
 export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {

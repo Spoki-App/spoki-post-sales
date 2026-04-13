@@ -4,10 +4,60 @@
  */
 
 import { pgQuery } from '@/lib/db/postgres';
-import { getHubSpotClient, type HSCompany, type HSContact, type HSTicket, type HSEngagement } from './client';
+import {
+  getHubSpotClient,
+  type HSCompany,
+  type HSContact,
+  type HSTicket,
+  type HSEngagement,
+  type MrrEnrichmentStats,
+} from './client';
 import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('hubspot:sync');
+
+/**
+ * Only these keys are persisted in raw_properties JSONB to keep DB size manageable.
+ * Everything else from HubSpot is discarded at sync time.
+ */
+const ENGAGEMENT_RAW_KEEP = new Set([
+  'hs_email_from_email', 'hs_email_from_firstname', 'hs_email_from_lastname',
+  'hs_email_to_email', 'hs_email_to_firstname', 'hs_email_to_lastname',
+  'hs_email_subject', 'hs_email_text',
+  'hs_call_direction', 'hs_call_disposition', 'hs_call_title', 'hs_call_body',
+  'hs_meeting_title', 'hs_meeting_body', 'hs_internal_meeting_notes',
+  'hs_task_subject', 'hs_task_status', 'hs_task_priority', 'hs_task_type',
+  'hs_note_body', 'hs_body_preview',
+]);
+
+const TICKET_RAW_KEEP = new Set([
+  'hs_pipeline', 'hs_pipeline_stage', 'hs_ticket_priority',
+  'subject', 'content',
+]);
+
+const TRUNCATE_AT = 500;
+const ENGAGEMENT_RAW_TRUNCATE = new Set([
+  'hs_email_text', 'hs_body_preview', 'hs_note_body',
+  'hs_call_body', 'hs_meeting_body', 'hs_internal_meeting_notes',
+]);
+
+function pickKeys(obj: Record<string, unknown> | undefined | null, allowed: Set<string>, truncateKeys?: Set<string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!obj) return out;
+  for (const k of allowed) {
+    if (k in obj && obj[k] != null && obj[k] !== '') {
+      let v = obj[k];
+      if (typeof v === 'string') {
+        v = v.replace(/\u0000/g, '');
+        if (truncateKeys?.has(k) && v.length > TRUNCATE_AT) {
+          v = (v as string).slice(0, TRUNCATE_AT);
+        }
+      }
+      out[k] = v;
+    }
+  }
+  return out;
+}
 
 export interface SyncResult {
   companies: number;
@@ -16,6 +66,7 @@ export interface SyncResult {
   engagements: number;
   errors: string[];
   durationMs: number;
+  mrrEnrichment?: MrrEnrichmentStats;
 }
 
 // ─── Companies ────────────────────────────────────────────────────────────────
@@ -46,7 +97,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
     const onboardingStatuses = chunk.map(c => c.onboardingStatus);
     const csOwnerIds = chunk.map(c => c.companyOwnerId);
     const churnRisks = chunk.map(c => c.churnRisk);
-    const rawProps = chunk.map(c => JSON.stringify(c.rawProperties));
+    const rawProps = chunk.map(() => JSON.stringify({}));
 
     await pgQuery(
       `INSERT INTO clients (
@@ -168,7 +219,7 @@ async function syncContacts(contacts: HSContact[]): Promise<number> {
         chunk.map(c => c.ownerId),
         chunk.map(c => c.lastActivityDate ? new Date(c.lastActivityDate) : null),
         chunk.map(c => c.communicationRoles.join(';') || null),
-        chunk.map(c => JSON.stringify(c.rawProperties)),
+        chunk.map(() => JSON.stringify({})),
         chunk.map(() => new Date()),
         chunk.map(() => new Date()),
       ]
@@ -205,15 +256,15 @@ async function syncTickets(tickets: HSTicket[]): Promise<number> {
       `INSERT INTO tickets (
         hubspot_id, client_id, subject, content, status,
         priority, pipeline, owner_id, opened_at, closed_at,
-        last_modified_at, raw_properties, last_synced_at
+        last_modified_at, activated_at, raw_properties, last_synced_at
       )
       SELECT * FROM UNNEST(
         $1::text[], $2::uuid[], $3::text[], $4::text[], $5::text[],
         $6::text[], $7::text[], $8::text[], $9::timestamptz[], $10::timestamptz[],
-        $11::timestamptz[], $12::jsonb[], $13::timestamptz[]
+        $11::timestamptz[], $12::timestamptz[], $13::jsonb[], $14::timestamptz[]
       ) AS t(hubspot_id, client_id, subject, content, status,
              priority, pipeline, owner_id, opened_at, closed_at,
-             last_modified_at, raw_properties, last_synced_at)
+             last_modified_at, activated_at, raw_properties, last_synced_at)
       ON CONFLICT (hubspot_id) DO UPDATE SET
         client_id        = EXCLUDED.client_id,
         subject          = EXCLUDED.subject,
@@ -225,6 +276,7 @@ async function syncTickets(tickets: HSTicket[]): Promise<number> {
         opened_at        = EXCLUDED.opened_at,
         closed_at        = EXCLUDED.closed_at,
         last_modified_at = EXCLUDED.last_modified_at,
+        activated_at     = EXCLUDED.activated_at,
         raw_properties   = EXCLUDED.raw_properties,
         last_synced_at   = NOW()`,
       [
@@ -239,7 +291,8 @@ async function syncTickets(tickets: HSTicket[]): Promise<number> {
         chunk.map(t => t.openedAt ? new Date(t.openedAt) : null),
         chunk.map(t => t.closedAt ? new Date(t.closedAt) : null),
         chunk.map(t => t.lastModifiedAt ? new Date(t.lastModifiedAt) : null),
-        chunk.map(t => JSON.stringify(t.rawProperties)),
+        chunk.map(t => t.activatedAt ? new Date(Number(t.activatedAt) > 1e12 ? Number(t.activatedAt) : t.activatedAt) : null),
+        chunk.map(t => JSON.stringify(pickKeys(t.rawProperties, TICKET_RAW_KEEP))),
         chunk.map(() => new Date()),
       ]
     );
@@ -259,6 +312,7 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
 
   const clientMap: Record<string, string> = {};
   const contactMap: Record<string, string> = {};
+  const contactHubToClientId: Record<string, string> = {};
 
   if (companyHubspotIds.length > 0) {
     const res = await pgQuery<{ hubspot_id: string; id: string }>(
@@ -269,11 +323,14 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
   }
 
   if (contactHubspotIds.length > 0) {
-    const res = await pgQuery<{ hubspot_id: string; id: string }>(
-      `SELECT hubspot_id, id FROM contacts WHERE hubspot_id = ANY($1::text[])`,
+    const res = await pgQuery<{ hubspot_id: string; id: string; client_id: string | null }>(
+      `SELECT hubspot_id, id, client_id FROM contacts WHERE hubspot_id = ANY($1::text[])`,
       [contactHubspotIds]
     );
-    for (const row of res.rows) contactMap[row.hubspot_id] = row.id;
+    for (const row of res.rows) {
+      contactMap[row.hubspot_id] = row.id;
+      if (row.client_id) contactHubToClientId[row.hubspot_id] = row.client_id;
+    }
   }
 
   const CHUNK = 200;
@@ -303,13 +360,20 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
         last_synced_at = NOW()`,
       [
         chunk.map(e => e.id),
-        chunk.map(e => (e.companyId ? clientMap[e.companyId] ?? null : null)),
+        chunk.map(e => {
+          if (e.companyId && clientMap[e.companyId]) return clientMap[e.companyId];
+          if (e.contactId && contactHubToClientId[e.contactId]) return contactHubToClientId[e.contactId];
+          return null;
+        }),
         chunk.map(e => (e.contactId ? contactMap[e.contactId] ?? null : null)),
         chunk.map(e => e.type),
         chunk.map(e => new Date(e.occurredAt)),
         chunk.map(e => e.ownerId),
-        chunk.map(e => e.title),
-        chunk.map(e => JSON.stringify(e.rawProperties)),
+        chunk.map(e => e.title ? e.title.replace(/\u0000/g, '') : e.title),
+        chunk.map(e => {
+          const json = JSON.stringify(pickKeys(e.rawProperties, ENGAGEMENT_RAW_KEEP, ENGAGEMENT_RAW_TRUNCATE));
+          return json.replace(/\\u0000/g, '');
+        }),
         chunk.map(() => new Date()),
       ]
     );
@@ -388,8 +452,11 @@ export async function runFullSync(): Promise<SyncResult> {
 
     // Sync in order (contacts/tickets need companies first)
     if (companies.status === 'fulfilled') {
+      result.mrrEnrichment = await client.enrichCompaniesMrrFromDeals(companies.value);
       result.companies = await syncCompanies(companies.value);
-      logger.info(`Synced ${result.companies} companies`);
+      logger.info(
+        `Synced ${result.companies} companies; MRR deal enrichment: ${JSON.stringify(result.mrrEnrichment)}`
+      );
     } else {
       errors.push(`companies: ${String(companies.reason)}`);
       logger.error('Failed to fetch companies', { error: String(companies.reason) });

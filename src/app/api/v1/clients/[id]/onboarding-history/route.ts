@@ -50,10 +50,11 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
     const hs = getHubSpotClient();
     const response = await (hs as unknown as { http: { get: (url: string, opts: unknown) => Promise<{ data: unknown }> } }).http.get(
       `/crm/v3/objects/tickets/${ticket.hubspot_id}`,
-      { params: { propertiesWithHistory: 'hs_pipeline_stage' } }
+      { params: { propertiesWithHistory: 'hs_pipeline_stage', properties: 'hs_date_entered_1,createdate' } }
     );
 
     const data = response.data as {
+      properties?: Record<string, string | null>;
       propertiesWithHistory?: {
         hs_pipeline_stage?: Array<{ value: string; timestamp: string }>;
       };
@@ -64,6 +65,17 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
     for (const h of history) {
       if (!reachedStages.has(h.value)) {
         reachedStages.set(h.value, h.timestamp);
+      }
+    }
+
+    if (!reachedStages.has('1')) {
+      const dealWonTs = data.properties?.hs_date_entered_1;
+      if (dealWonTs) {
+        const ms = Number(dealWonTs);
+        const date = ms > 1e12 ? new Date(ms).toISOString() : dealWonTs;
+        reachedStages.set('1', date);
+      } else if (data.properties?.createdate) {
+        reachedStages.set('1', data.properties.createdate);
       }
     }
 

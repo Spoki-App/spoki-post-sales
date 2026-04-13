@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { AiChatPanel } from '@/components/ui/AiChatPanel';
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
@@ -29,6 +30,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>
+      <AiChatPanel />
     </div>
   );
 }

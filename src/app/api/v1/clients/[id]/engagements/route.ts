@@ -30,6 +30,10 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
         callDirection: rp.hs_call_direction ?? null,
         callDisposition: rp.hs_call_disposition ?? null,
         callTitle: rp.hs_call_title ?? null,
+        taskSubject: rp.hs_task_subject ?? null,
+        taskStatus: rp.hs_task_status ?? null,
+        taskPriority: rp.hs_task_priority ?? null,
+        taskType: rp.hs_task_type ?? null,
       };
     }) });
   } catch (error) {
