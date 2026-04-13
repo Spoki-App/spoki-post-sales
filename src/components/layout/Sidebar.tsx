@@ -26,7 +26,6 @@ import {
 const CLIENT_SECTIONS = [
   { href: '/clients?section=company', label: 'Company Owner', icon: Building2, section: 'company' },
   { href: '/clients?section=onboarding', label: 'Onboarding Owner', icon: GraduationCap, section: 'onboarding' },
-  { href: '/clients?section=success', label: 'Customer Success Owner', icon: HeartHandshake, section: 'success' },
 ];
 
 export function Sidebar() {

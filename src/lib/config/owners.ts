@@ -7,6 +7,9 @@ export interface HubSpotOwner {
   bookingUrl?: string;
 }
 
+/** HubSpot owner id for Marco Manigrassi (company owner / account brief portfolio). */
+export const MARCO_MANIGRASSI_HUBSPOT_OWNER_ID = '75723356';
+
 export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {
   // ─── Customer Success ────────────────────────────────────────────────────────
   "75723356":   { id: "75723356",   email: "marco.manigrassi@spoki.it",      firstName: "Marco",      lastName: "Manigrassi",  team: "Customer Success" },

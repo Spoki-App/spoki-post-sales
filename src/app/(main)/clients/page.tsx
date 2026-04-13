@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { Badge } from '@/components/ui/Badge';
@@ -152,7 +152,16 @@ export default function ClientsPage() {
   const { token } = useAuthStore();
   const { user } = useAuthStore();
   const searchParams = useSearchParams();
-  const section = (searchParams.get('section') ?? 'all') as 'all' | 'onboarding' | 'success' | 'company';
+  const router = useRouter();
+  const rawSection = searchParams.get('section') ?? 'all';
+  const section = (rawSection === 'success' ? 'all' : rawSection) as 'all' | 'onboarding' | 'company';
+
+  useEffect(() => {
+    if (searchParams.get('section') !== 'success') return;
+    const p = new URLSearchParams(searchParams.toString());
+    p.set('section', 'all');
+    router.replace(`/clients?${p.toString()}`);
+  }, [searchParams, router]);
   const isOwner = !!getOwnerByEmail(user?.email ?? '');
 
   const [clients, setClients] = useState<ClientWithHealth[]>([]);
@@ -167,7 +176,6 @@ export default function ClientsPage() {
   const SECTION_LABELS: Record<string, string> = {
     company: 'Company Owner',
     onboarding: 'Customer Onboarding Owner',
-    success: 'Customer Success Owner',
     all: 'Tutti i clienti',
   };
 
@@ -244,10 +252,11 @@ export default function ClientsPage() {
                   { label: 'Azienda', key: 'name' },
                   { label: 'Fonte', key: 'source' },
                   { label: 'Onboarding', key: null },
+                  { label: 'Salute', key: null },
                   { label: 'Giorni in pipeline', key: 'pipeline' },
                   { label: 'MRR', key: 'mrr' },
                   { label: 'Piano', key: 'plan' },
-                  { label: 'CS Owner', key: 'owner' },
+                  { label: 'Company Owner', key: 'owner' },
                   { label: 'Ticket Support', key: 'support' },
                   { label: 'Ultimo contatto', key: 'lastContact' },
                   { label: 'Rinnovo', key: 'renewal' },

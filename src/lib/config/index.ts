@@ -35,7 +35,6 @@ export const config = {
     secret: process.env.CRON_SECRET || '',
   },
   googleChat: {
-    /** Resource name e.g. spaces/AAQAXowZpvE — Google Chat API spaces.messages.list */
     releaseSpaceId: (process.env.GOOGLE_CHAT_RELEASE_SPACE_ID || '').trim(),
   },
   metabase: {
@@ -49,6 +48,17 @@ export const config = {
   gmail: {
     user: process.env.GMAIL_USER || '',
     appPassword: process.env.GMAIL_APP_PASSWORD || '',
+  },
+  accountBrief: {
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    marketingMindApiUrl: process.env.MARKETING_MIND_API_URL || '',
+    marketingMindApiKey: process.env.MARKETING_MIND_API_KEY || '',
+    marketingMindFeaturesUrlTemplate:
+      process.env.MARKETING_MIND_FEATURES_URL_TEMPLATE || '',
+    whatsappCampaignsApiUrl: process.env.WHATSAPP_CAMPAIGNS_API_URL || '',
+    whatsappCampaignsApiKey: process.env.WHATSAPP_CAMPAIGNS_API_KEY || '',
+    whatsappCampaignsUrlTemplate: process.env.WHATSAPP_CAMPAIGNS_URL_TEMPLATE || '',
   },
 };
 
