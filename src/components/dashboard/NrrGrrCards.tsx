@@ -27,7 +27,7 @@ export function NrrGrrCards() {
       <Card>
         <CardHeader><CardTitle>NRR / GRR</CardTitle></CardHeader>
         <div className="h-48 flex items-center justify-center">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
         </div>
       </Card>
     );
@@ -52,7 +52,7 @@ export function NrrGrrCards() {
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-blue-600">
+          <div className="p-2 rounded-xl bg-emerald-600">
             <Activity className="w-4 h-4 text-white" />
           </div>
           <CardTitle>NRR / GRR (ultimi 6 mesi)</CardTitle>
@@ -91,7 +91,7 @@ export function NrrGrrCards() {
           ['Expansion', latest.expandedCount, 'text-emerald-600', '+'],
           ['Contraction', latest.contractedCount, 'text-amber-600', ''],
           ['Churn', latest.churnedCount, 'text-red-600', ''],
-          ['New', latest.newCount, 'text-blue-600', '+'],
+          ['New', latest.newCount, 'text-teal-600', '+'],
         ] as const).map(([label, value, color, prefix]) => (
           <div key={label}>
             <p className="text-xs text-slate-500">{label}</p>
@@ -111,7 +111,7 @@ export function NrrGrrCards() {
               contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
             />
             <ReferenceLine y={100} stroke="#94a3b8" strokeDasharray="3 3" />
-            <Bar dataKey="nrr" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="nrr" fill="#059669" radius={[4, 4, 0, 0]} />
             <Bar dataKey="grr" fill="#10b981" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

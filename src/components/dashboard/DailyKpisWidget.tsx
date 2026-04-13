@@ -60,7 +60,7 @@ export function DailyKpisWidget() {
       <Card>
         <CardHeader><CardTitle>KPI Giornalieri (da Metabase)</CardTitle></CardHeader>
         <div className="h-20 flex items-center justify-center">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
         </div>
       </Card>
     );
@@ -76,28 +76,28 @@ export function DailyKpisWidget() {
           title="MRR Abbonamenti"
           value={formatEur(data.dashboardCards.subscriptionMRR)}
           icon={DollarSign}
-          color="bg-indigo-600"
+          color="bg-green-600"
         />
         <MetabaseKpiCard
           title="Revenue mese"
           value={formatEur(data.revenue.currentMonth)}
           sub={<ChangeBadge pct={data.revenue.monthChangePct} />}
           icon={BarChart3}
-          color="bg-cyan-600"
+          color="bg-emerald-500"
         />
         <MetabaseKpiCard
           title="Nuovi clienti mese"
           value={data.newCustomers.monthCount}
           sub={<ChangeBadge pct={data.newCustomers.monthChangePct} />}
           icon={Users}
-          color="bg-violet-600"
+          color="bg-teal-600"
         />
         <MetabaseKpiCard
           title="YTD Revenue"
           value={formatEur(data.ytd.total)}
           sub={<ChangeBadge pct={data.ytd.yoyChangePct} />}
           icon={TrendingUp}
-          color="bg-teal-600"
+          color="bg-green-700"
         />
       </div>
 

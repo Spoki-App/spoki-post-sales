@@ -121,7 +121,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
               onClick={() => { setObjectType(t.id); setSelectedContact(null); setSelectedTicket(null); setResult(null); setSearch(''); }}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 objectType === t.id
-                  ? 'border-blue-600 text-blue-600'
+                  ? 'border-emerald-600 text-emerald-600'
                   : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -137,7 +137,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
             {selectedContact ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-xs font-medium text-blue-700">
+                  <div className="w-7 h-7 rounded-full bg-emerald-50 flex items-center justify-center text-xs font-medium text-emerald-700">
                     {((selectedContact.firstName ?? selectedContact.email ?? '?')[0] ?? '?').toUpperCase()}
                   </div>
                   <div>
@@ -149,7 +149,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
                 </div>
                 <button
                   onClick={() => { setSelectedContact(null); setResult(null); }}
-                  className="text-xs text-blue-600 hover:text-blue-700"
+                  className="text-xs text-emerald-600 hover:text-emerald-700"
                 >
                   Cambia
                 </button>
@@ -202,7 +202,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
                 </div>
                 <button
                   onClick={() => { setSelectedTicket(null); setResult(null); }}
-                  className="text-xs text-blue-600 hover:text-blue-700"
+                  className="text-xs text-emerald-600 hover:text-emerald-700"
                 >
                   Cambia
                 </button>
@@ -245,7 +245,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
               placeholder="Cerca workflow..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
         )}
@@ -255,7 +255,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
           <div className="flex-1 overflow-y-auto px-5 py-3">
             {loading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
               </div>
             ) : filtered.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-12">
@@ -289,7 +289,7 @@ export function WorkflowEnrollModal({ open, onClose, companyHubspotId, companyNa
                           <button
                             onClick={() => handleEnroll(w.id)}
                             disabled={isEnrolling}
-                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 shrink-0 flex items-center gap-1.5"
                           >
                             {isEnrolling && <Loader2 className="w-3 h-3 animate-spin" />}
                             Enrolla

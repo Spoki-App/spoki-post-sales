@@ -115,7 +115,7 @@ export function SyncButton({ secret, onComplete }: SyncButtonProps) {
       <button
         onClick={runSync}
         disabled={running}
-        className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+        className="flex items-center gap-2 px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-60 transition-colors"
       >
         {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         {running ? `Sincronizzazione... ${formatElapsed(totalElapsed)}` : 'Sincronizza HubSpot'}
@@ -128,15 +128,15 @@ export function SyncButton({ secret, onComplete }: SyncButtonProps) {
             return (
               <div key={step.key} className="flex items-center gap-3">
                 <div className="w-5 h-5 flex items-center justify-center shrink-0">
-                  {status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
+                  {status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
                   {status === 'done' && <Check className="w-4 h-4 text-emerald-500" />}
                   {status === 'error' && <X className="w-4 h-4 text-red-500" />}
                   {status === 'idle' && <div className="w-3 h-3 rounded-full bg-slate-300" />}
                 </div>
-                <span className={status === 'done' ? 'text-slate-700' : status === 'running' ? 'text-blue-700 font-medium' : 'text-slate-400'}>
+                <span className={status === 'done' ? 'text-slate-700' : status === 'running' ? 'text-emerald-700 font-medium' : 'text-slate-400'}>
                   {step.label}
                   {status === 'running' && (
-                    <span className="ml-1 text-blue-400 tabular-nums">{formatElapsed(currentStepElapsed)}</span>
+                    <span className="ml-1 text-emerald-400 tabular-nums">{formatElapsed(currentStepElapsed)}</span>
                   )}
                   {status === 'done' && (
                     <span className="ml-1 text-slate-400">

@@ -23,14 +23,26 @@ export const PATCH = withAuth(async (request: NextRequest, auth: AuthenticatedRe
       throw new ApiError(400, 'stage non valida');
     }
 
-    const upd = await pgQuery<{ n: string }>(
-      `UPDATE cs_success_pipeline
-       SET stage = $1, stage_changed_at = NOW(), updated_at = NOW()
-       WHERE client_id = $2 AND owner_hubspot_id = $3
-       RETURNING '1' AS n`,
-      [body.stage, clientId, owner.id]
+    const client = await pgQuery<{ id: string; cs_owner_id: string | null }>(
+      `SELECT c.id, c.cs_owner_id FROM clients c WHERE c.id = $1`,
+      [clientId]
     );
-    if (upd.rows.length === 0) throw new ApiError(404, 'Card pipeline non trovata');
+    const row = client.rows[0];
+    if (!row) throw new ApiError(404, 'Cliente non trovato');
+    if (row.cs_owner_id !== owner.id) {
+      throw new ApiError(403, 'Il cliente non è in portfolio company owner per il tuo utente');
+    }
+
+    await pgQuery(
+      `INSERT INTO cs_success_pipeline (client_id, owner_hubspot_id, stage, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (client_id) DO UPDATE SET
+         stage = EXCLUDED.stage,
+         owner_hubspot_id = EXCLUDED.owner_hubspot_id,
+         stage_changed_at = NOW(),
+         updated_at = NOW()`,
+      [clientId, owner.id, body.stage]
+    );
 
     return createSuccessResponse({ data: { ok: true } });
   } catch (error) {

@@ -38,7 +38,7 @@ function AlertItem({ alert, onResolve }: { alert: Alert; onResolve: (id: string)
             {SEVERITY_LABELS[alert.severity]}
           </Badge>
           {alert.clientName && (
-            <Link href={`/clients/${alert.clientId}`} className="text-sm font-medium text-blue-600 hover:underline">
+            <Link href={`/clients/${alert.clientId}`} className="text-sm font-medium text-emerald-600 hover:underline">
               {alert.clientName}
             </Link>
           )}
@@ -77,7 +77,7 @@ function RuleRow({ rule, onToggle }: RuleRowProps) {
         </Badge>
         <button
           onClick={() => onToggle(rule.id, !rule.enabled)}
-          className={`relative w-9 h-5 rounded-full transition-colors ${rule.enabled ? 'bg-blue-600' : 'bg-slate-300'}`}
+          className={`relative w-9 h-5 rounded-full transition-colors ${rule.enabled ? 'bg-emerald-600' : 'bg-slate-300'}`}
         >
           <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${rule.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
         </button>
@@ -156,7 +156,7 @@ export default function AlertsPage() {
         <Card padding="none">
           {loading ? (
             <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : alerts.length === 0 ? (
             <div className="text-center py-12">

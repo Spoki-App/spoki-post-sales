@@ -1,22 +1,15 @@
 /**
- * Dashboard HubSpot da incorporare per utente CS (embed URL).
- * In HubSpot: Reporting → apri la dashboard → menu → Condividi / Incorpora → copia URL iframe.
- * Chiave = HubSpot owner id (stesso di HUBSPOT_OWNERS).
+ * Link opzionale al report HubSpot (solo riferimento in app; niente iframe).
+ * Chiave = HubSpot owner id (HUBSPOT_OWNERS).
  */
-export interface CsHubspotDashboardLink {
-  title: string;
-  /** URL per iframe (embed). Se vuoto, mostra solo il link esterno. */
-  embedUrl: string;
-  /** Apri nel browser / HubSpot (fallback se l’embed non è consentito). */
-  openUrl?: string;
+export interface CsHubspotReferenceLink {
+  label: string;
+  url: string;
 }
 
-export const CS_HUBSPOT_DASHBOARDS: Record<string, CsHubspotDashboardLink[]> = {
-  '75723356': [
-    {
-      title: 'Dashboard CS (Marco)',
-      embedUrl: '',
-      openUrl: 'https://app.hubspot.com/reporting',
-    },
-  ],
+export const CS_HUBSPOT_REFERENCE_LINKS: Record<string, CsHubspotReferenceLink | null> = {
+  '75723356': {
+    label: 'Apri report in HubSpot',
+    url: 'https://app-eu1.hubspot.com/reports-dashboard/47964451/view/110994181',
+  },
 };

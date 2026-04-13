@@ -118,12 +118,12 @@ function NotePanel({ recordId, token }: { recordId: string; token: string }) {
             onChange={e => setText(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
             placeholder="Scrivi una nota..."
-            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
           <button
             onClick={handleAdd}
             disabled={saving || !text.trim()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
           >
             <Send className="w-3.5 h-3.5" />
             {saving ? '...' : 'Invia'}
@@ -150,7 +150,7 @@ function ChurnRow({
   return (
     <>
       <tr
-        className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}
+        className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors ${isSelected ? 'bg-emerald-50/50' : ''}`}
         onClick={() => setExpanded(!expanded)}
       >
         <td className="px-4 py-3 w-10" onClick={e => e.stopPropagation()}>
@@ -158,7 +158,7 @@ function ChurnRow({
             type="checkbox"
             checked={isSelected}
             onChange={() => onToggleSelect(record.id)}
-            className="w-4 h-4 accent-blue-600 cursor-pointer"
+            className="w-4 h-4 accent-emerald-600 cursor-pointer"
           />
         </td>
         <td className="px-4 py-3 text-xs text-slate-500">{record.accountId}</td>
@@ -234,7 +234,7 @@ function BulkActionBar({
   const [batchStatus, setBatchStatus] = useState('');
 
   return (
-    <div className="sticky top-0 z-10 bg-blue-600 text-white px-5 py-3 rounded-xl mb-4 flex items-center gap-4 flex-wrap shadow-lg">
+    <div className="sticky top-0 z-10 bg-emerald-600 text-white px-5 py-3 rounded-xl mb-4 flex items-center gap-4 flex-wrap shadow-lg">
       <div className="flex items-center gap-2">
         <span className="text-sm font-bold">{count} selezionati</span>
         <span className="text-xs opacity-80">({formatEur(mrrSelected)} MRR)</span>
@@ -254,7 +254,7 @@ function BulkActionBar({
         <button
           onClick={() => { if (batchStatus) { onBatchStatus(batchStatus); setBatchStatus(''); } }}
           disabled={!batchStatus}
-          className="px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           Applica
         </button>
@@ -408,7 +408,7 @@ export default function ChurnTrackerPage() {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -446,7 +446,7 @@ export default function ChurnTrackerPage() {
           <button
             onClick={handleSync}
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? 'Sync...' : 'Sincronizza da Metabase'}
@@ -493,7 +493,7 @@ export default function ChurnTrackerPage() {
           title="Recovery rate"
           value={`${summary?.recoveryRate ?? 0}%`}
           icon={TrendingDown}
-          color="bg-blue-600"
+          color="bg-emerald-600"
         />
       </div>
 
@@ -555,7 +555,7 @@ export default function ChurnTrackerPage() {
                       type="checkbox"
                       checked={allSelected}
                       onChange={() => allSelected ? setSelectedIds(new Set()) : setSelectedIds(new Set(filteredRecords.map(r => r.id)))}
-                      className="w-4 h-4 accent-blue-600 cursor-pointer"
+                      className="w-4 h-4 accent-emerald-600 cursor-pointer"
                     />
                   </th>
                   <SortHeader label="ID" field="accountId" />

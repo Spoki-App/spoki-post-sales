@@ -34,7 +34,7 @@ export function MrrTrendChart({ accountId }: Props) {
       <Card>
         <CardHeader><CardTitle>MRR Trend</CardTitle></CardHeader>
         <div className="h-48 flex items-center justify-center">
-          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
         </div>
       </Card>
     );
@@ -86,7 +86,7 @@ export function MrrTrendChart({ accountId }: Props) {
               labelFormatter={l => `Mese: ${l}`}
               contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
             />
-            <Line type="monotone" dataKey="mrr" stroke="#3b82f6" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="mrr" stroke="#059669" strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>

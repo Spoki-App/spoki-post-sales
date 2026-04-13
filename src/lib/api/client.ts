@@ -3,6 +3,8 @@
  */
 
 import type { Client, ClientWithHealth, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
+import { getFirebaseAuth } from '@/lib/firebase/client';
+import { useAuthStore } from '@/lib/store/auth';
 
 async function fetchApi<T>(
   path: string,
@@ -10,14 +12,26 @@ async function fetchApi<T>(
 ): Promise<T> {
   const { token, ...rest } = options ?? {};
 
-  const res = await fetch(`/api/v1${path}`, {
-    ...rest,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...rest.headers,
-    },
-  });
+  const request = (authToken: string | undefined) =>
+    fetch(`/api/v1${path}`, {
+      ...rest,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...rest.headers,
+      },
+    });
+
+  let res = await request(token);
+
+  if (res.status === 401 && token) {
+    const user = getFirebaseAuth().currentUser;
+    if (user) {
+      const fresh = await user.getIdToken(true);
+      useAuthStore.getState().setToken(fresh);
+      res = await request(fresh);
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
@@ -41,8 +55,6 @@ export const clientsApi = {
     fetchApi<ApiResponse<Engagement[]>>(`/clients/${id}/engagements`, { token }),
   getContacts: (token: string, id: string, role?: string) =>
     fetchApi<ApiResponse<Contact[]>>(`/clients/${id}/contacts${role ? `?role=${encodeURIComponent(role)}` : ''}`, { token }),
-  getAccountBrief: (token: string, id: string) =>
-    fetchApi<ApiResponse<AccountBriefPayload>>(`/clients/${id}/account-brief`, { method: 'POST', token }),
   getAiAnalysis: (token: string, id: string) =>
     fetchApi<ApiResponse<{
       summary: string;
@@ -59,15 +71,28 @@ export const clientsApi = {
       ticketHubspotId: string | null;
       issues: Array<{ label: string; occurredAt: string }>;
     }>>(`/clients/${id}/onboarding-history`, { token }),
+  getAccountBrief: (token: string, id: string) =>
+    fetchApi<ApiResponse<AccountBriefPayload>>(`/clients/${id}/account-brief`, { method: 'POST', token }),
 };
 
 // ─── Customer Success ──────────────────────────────────────────────────────────
 export const customerSuccessApi = {
   dashboards: (token: string) =>
-    fetchApi<ApiResponse<{ owner: { id: string; name: string }; dashboards: Array<{ title: string; embedUrl: string; openUrl?: string }> }>>(
-      '/customer-success/dashboards',
-      { token }
-    ),
+    fetchApi<
+      ApiResponse<{
+        owner: { id: string; name: string };
+        portfolio: { clientCount: number; totalMrr: number };
+        renewals: Record<string, { count: number; totalMrr: number }>;
+        pipeline: {
+          inPipeline: number;
+          completed: number;
+          totalInCsFlow: number;
+          eligibleToAddCount: number;
+          byStage: Array<{ stage: string; label: string; count: number }>;
+        };
+        hubspotReference: { label: string; url: string } | null;
+      }>
+    >('/customer-success/dashboards', { token }),
   clients: (token: string, params?: { page?: number; q?: string }) => {
     const qs = params ? new URLSearchParams(params as Record<string, string>).toString() : '';
     return fetchApi<
@@ -92,8 +117,8 @@ export const customerSuccessApi = {
           hubspotId: string;
           mrr: number | null;
           activatedAt: string | null;
+          hasPipelineRow?: boolean;
         }>;
-        eligibleToAdd: Array<{ id: string; hubspotId: string; name: string; mrr: number | null }>;
       }>
     >('/customer-success/pipeline', { token }),
   addToPipeline: (token: string, clientId: string) =>
