@@ -33,6 +33,20 @@ const EMAIL_ALIASES: Record<string, string> = {
   'giulio.trinchera@spoki.com': 'giulio.trinchera@spoki.it',
 };
 
+const ADMIN_EMAILS = new Set([
+  'giulio.trinchera@spoki.com',
+  'giulio.trinchera@spoki.it',
+  'daniela.pascale@spoki.it',
+  'marco.manigrassi@spoki.it',
+]);
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const normalized = email.toLowerCase();
+  const resolved = EMAIL_ALIASES[normalized] ?? normalized;
+  return ADMIN_EMAILS.has(resolved);
+}
+
 export function getOwnerByEmail(email: string | null | undefined): HubSpotOwner | null {
   if (!email) return null;
   const normalized = email.toLowerCase();

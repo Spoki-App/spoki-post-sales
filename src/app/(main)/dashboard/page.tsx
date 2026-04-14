@@ -11,7 +11,7 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { SyncButton } from '@/components/ui/SyncButton';
 import { formatMrrDisplay } from '@/lib/format/mrr';
-import { getOwnerByEmail } from '@/lib/config/owners';
+import { getOwnerByEmail, isAdminEmail } from '@/lib/config/owners';
 import type { ClientWithHealth, Alert } from '@/types';
 import { NrrGrrCards } from '@/components/dashboard/NrrGrrCards';
 import { DailyKpisWidget } from '@/components/dashboard/DailyKpisWidget';
@@ -55,7 +55,7 @@ function clientMrrLine(mrr: number | null) {
 
 export default function DashboardPage() {
   const { token, user } = useAuthStore();
-  const isAdmin = !getOwnerByEmail(user?.email ?? '');
+  const isAdmin = !getOwnerByEmail(user?.email ?? '') || isAdminEmail(user?.email);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
   const [previewClients, setPreviewClients] = useState<ClientWithHealth[]>([]);
@@ -93,7 +93,7 @@ export default function DashboardPage() {
     : 0;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>

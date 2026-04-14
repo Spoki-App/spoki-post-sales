@@ -223,31 +223,66 @@ export interface QbrSlide {
   type: 'intro' | 'metrics' | 'engagement' | 'issues' | 'onboarding' | 'actions' | 'closing';
 }
 
-export async function generateQbrIntro(clientName: string, csOwner: string | null): Promise<string> {
+const LANG_NAMES: Record<string, { full: string; intro: string; role: string }> = {
+  it: { full: 'ITALIANO', intro: 'Scrivi un testo introduttivo per una Quarterly Business Review (QBR) da inviare al cliente', role: 'il vostro consulente Spoki' },
+  en: { full: 'ENGLISH', intro: 'Write an introductory text for a Quarterly Business Review (QBR) to send to the client', role: 'your Spoki consultant' },
+  es: { full: 'ESPANOL', intro: 'Escribe un texto introductorio para una Quarterly Business Review (QBR) para enviar al cliente', role: 'su consultor Spoki' },
+};
+
+export async function generateQbrIntro(clientName: string, csOwner: string | null, lang: string = 'it'): Promise<string> {
   const ownerName = csOwner && csOwner !== '—' ? csOwner : null;
+  const ln = LANG_NAMES[lang] ?? LANG_NAMES.it;
 
-  const prompt = `Scrivi un testo introduttivo per una Quarterly Business Review (QBR) da inviare al cliente "${clientName}".
+  const prompt = `${ln.intro} "${clientName}".
 
-${ownerName ? `Il consulente che scrive e firma e: ${ownerName}. Il suo ruolo e "il vostro consulente Spoki", MAI "Customer Success Manager".` : ''}
+${ownerName ? `The consultant writing and signing is: ${ownerName}. Their role is "${ln.role}", NEVER "Customer Success Manager".` : ''}
 
-ESEMPIO DI STILE (adattalo al cliente e al consulente, NON copiarlo identico):
-"Gentile cliente [nome azienda],
-Sono [nome consulente], il vostro consulente Spoki. Con questa Quarterly Business Review desidero ripercorrere insieme il nostro percorso e la collaborazione degli ultimi mesi, con un focus sulle attivita piu recenti e significative. L'obiettivo e fornirvi una panoramica chiara e concreta di quanto abbiamo realizzato insieme, evidenziando i progressi e le aree di supporto.
-La nostra partnership e fondamentale e siamo qui per assicurarci che otteniate il massimo valore dalla piattaforma Spoki."
+STYLE EXAMPLE (adapt to the client and consultant, DO NOT copy it verbatim):
+"Dear [company name],
+I am [consultant name], ${ln.role}. With this Quarterly Business Review I would like to review our journey and collaboration over the past months, focusing on the most recent and significant activities. The goal is to provide you with a clear overview of what we have achieved together, highlighting progress and areas of support.
+Our partnership is fundamental and we are here to ensure you get the most value from the Spoki platform."
 
-REGOLE:
-- Tono: professionale, cordiale, collaborativo, orientato alla partnership.
-- Il consulente si presenta con nome e ruolo ("il vostro consulente Spoki").
-- Menziona che la QBR contiene dati di utilizzo della piattaforma e novita.
-- Chiudi con un messaggio che sottolinea il valore della collaborazione.
-- Max 500 caratteri.
-- In ITALIANO.
-- Vietato markdown. Solo testo piano.
-- NON includere date specifiche o periodi (verranno aggiunti automaticamente).
-- Rispondi SOLO con il testo, niente JSON, niente virgolette.`;
+RULES:
+- Tone: professional, friendly, collaborative, partnership-oriented.
+- The consultant introduces themselves by name and role ("${ln.role}").
+- Mention that the QBR contains platform usage data and updates.
+- Close with a message emphasizing the value of the collaboration.
+- Max 500 characters.
+- Write in ${ln.full}.
+- No markdown. Plain text only.
+- Do NOT include specific dates or periods (they will be added automatically).
+- Reply ONLY with the text, no JSON, no quotes.`;
 
-  logger.info(`Generating QBR intro for: ${clientName}`);
+  logger.info(`Generating QBR intro for: ${clientName} (lang: ${lang})`);
   return generate(prompt, { temperature: 0.4, maxOutputTokens: 1024 });
+}
+
+export async function generateQbrReleaseSlide(releaseDigest: string, lang: string = 'it'): Promise<string> {
+  const ln = LANG_NAMES[lang] ?? LANG_NAMES.it;
+
+  const prompt = `You are a Customer Success Manager at Spoki. Write the content of a QBR slide about platform updates, aimed at the CLIENT.
+
+You have the following raw messages from the internal "release" space (one line per message, format: date author | text). Use ONLY this data to list the updates; do not invent anything.
+
+RELEASE MESSAGES:
+${releaseDigest}
+
+RULES:
+- Select 5-7 of the MOST RECENT and relevant updates for a client using Spoki (WhatsApp Business).
+- Prioritize releases from the last 4-6 weeks over older ones.
+- Cover diverse categories (e.g. chat, automations, integrations, analytics, billing) -- do not focus on a single topic.
+- Each bullet MUST start with the date in square brackets, format [DD/MM]. Example: [03/04] New feature X.
+- Each update must be a bullet point (line starting with "- ") with a short, clear sentence in client-friendly language (not internal/technical).
+- If a message is about internal fixes, infrastructure, tests, or details not visible to the client, skip it.
+- Order from most recent to least recent.
+- Max 600 characters total.
+- Write in ${ln.full}.
+- No markdown (no **, #, _). Plain text only with dash bullets.
+- Reply ONLY with the bullet text, no JSON, no quotes, no headings.`;
+
+  logger.info(`Generating QBR release slide from digest (lang: ${lang})`);
+  const text = await generate(prompt, { temperature: 0.5, maxOutputTokens: 1024 });
+  return stripQbrMarkdown(text.trim());
 }
 
 function stripQbrMarkdown(s: string): string {

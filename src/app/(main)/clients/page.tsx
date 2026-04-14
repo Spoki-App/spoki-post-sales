@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/Card';
 import { Search, ChevronRight, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { getOwnerName, getOwnerByEmail } from '@/lib/config/owners';
+import { getOwnerName, getOwnerByEmail, isAdminEmail, CS_TEAM } from '@/lib/config/owners';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth } from '@/types';
@@ -162,7 +162,8 @@ export default function ClientsPage() {
     p.set('section', 'all');
     router.replace(`/clients?${p.toString()}`);
   }, [searchParams, router]);
-  const isOwner = !!getOwnerByEmail(user?.email ?? '');
+  const loggedInOwner = getOwnerByEmail(user?.email ?? '');
+  const isOwner = !!loggedInOwner && !isAdminEmail(user?.email);
 
   const [clients, setClients] = useState<ClientWithHealth[]>([]);
   const [total, setTotal] = useState(0);
@@ -172,6 +173,7 @@ export default function ClientsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [ownerFilter, setOwnerFilter] = useState(isOwner && loggedInOwner ? loggedInOwner.id : '');
 
   const SECTION_LABELS: Record<string, string> = {
     company: 'Company Owner',
@@ -186,6 +188,7 @@ export default function ClientsPage() {
       const params = {
         page, q, sort: sortBy, dir: sortDir,
         ...(!isOwner ? { viewAll: true } : { section }),
+        ...(ownerFilter ? { owner: ownerFilter } : {}),
       } as Parameters<typeof clientsApi.list>[1];
       const res = await clientsApi.list(token, params);
       setClients(res.data);
@@ -195,7 +198,7 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, q, isOwner, section, sortBy, sortDir]);
+  }, [token, page, q, isOwner, section, sortBy, sortDir, ownerFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -205,10 +208,10 @@ export default function ClientsPage() {
     setPage(1);
   }
 
-  const totalPages = Math.ceil(total / 25);
+  const totalPages = Math.ceil(total / 50);
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto">
+    <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -240,6 +243,19 @@ export default function ClientsPage() {
             Cerca
           </button>
         </form>
+        <select
+          value={ownerFilter}
+          onChange={e => { setOwnerFilter(e.target.value); setPage(1); }}
+          className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+        >
+          <option value="">Tutti gli owner</option>
+          {CS_TEAM
+            .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
+            .map(o => (
+              <option key={o.id} value={o.id}>{o.firstName} {o.lastName}</option>
+            ))
+          }
+        </select>
       </div>
 
       {/* Table */}
@@ -251,8 +267,7 @@ export default function ClientsPage() {
                 {([
                   { label: 'Azienda', key: 'name' },
                   { label: 'Fonte', key: 'source' },
-                  { label: 'Onboarding', key: null },
-                  { label: 'Salute', key: null },
+                  { label: 'Onboarding', key: 'onboarding' },
                   { label: 'Giorni in pipeline', key: 'pipeline' },
                   { label: 'MRR', key: 'mrr' },
                   { label: 'Piano', key: 'plan' },
@@ -408,6 +423,10 @@ export default function ClientsPage() {
                             {formatDistanceToNow(new Date(c.lastEngagement.occurredAt), { addSuffix: true, locale: it })}
                           </p>
                         </a>
+                      ) : c.lastContactDate ? (
+                        <span className="text-xs text-slate-500">
+                          {formatDistanceToNow(new Date(c.lastContactDate), { addSuffix: true, locale: it })}
+                        </span>
                       ) : (
                         <span className="text-red-500 text-xs font-medium">Nessun contatto</span>
                       )}

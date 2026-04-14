@@ -134,6 +134,13 @@ async function generatePdfBase64(slides: Slide[], clientName: string): Promise<s
   return btoa(binary);
 }
 
+type QbrLanguage = 'it' | 'en' | 'es';
+const LANG_OPTIONS: { value: QbrLanguage; label: string }[] = [
+  { value: 'it', label: 'Italiano' },
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Espanol' },
+];
+
 export function QbrModal({ open, onClose, clientId, clientName }: Props) {
   const { token } = useAuthStore();
   const [slides, setSlides] = useState<Slide[]>([]);
@@ -141,6 +148,7 @@ export function QbrModal({ open, onClose, clientId, clientName }: Props) {
   const [current, setCurrent] = useState(0);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<QbrLanguage>('it');
 
   const [showSendPanel, setShowSendPanel] = useState(false);
   const [contacts, setContacts] = useState<(Contact & { communicationRoles?: string[] })[]>([]);
@@ -182,7 +190,7 @@ export function QbrModal({ open, onClose, clientId, clientName }: Props) {
     setShowSendPanel(false);
     setSendResult(null);
     try {
-      const res = await aiApi.generateQbr(token, clientId);
+      const res = await aiApi.generateQbr(token, clientId, language);
       setSlides(res.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Generazione QBR non riuscita');
@@ -281,6 +289,21 @@ export function QbrModal({ open, onClose, clientId, clientName }: Props) {
               <p className="text-sm text-slate-500 mb-6 text-center max-w-md">
                 Genera una presentazione da condividere con il cliente: percorso e temi emersi solo da email e meeting.
               </p>
+              <div className="flex items-center gap-1.5 mb-5">
+                {LANG_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setLanguage(opt.value)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      language === opt.value
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
               {error && (
                 <p className="text-sm text-red-600 mb-4 text-center max-w-md" role="alert">
                   {error}

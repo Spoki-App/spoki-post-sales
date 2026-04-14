@@ -8,6 +8,7 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   mrr: 'c.mrr',
   plan: 'c.plan',
   renewal: 'c.renewal_date',
+  onboarding: 'ob.status',
   pipeline: 'ob.activated_at',
   lastContact: 'le.occurred_at',
   support: 'support_count',
@@ -15,13 +16,15 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   source: 'c.purchase_source',
 };
 
-const NULLABLE_SORT_COLUMNS = new Set(['mrr', 'plan', 'renewal', 'pipeline', 'lastContact', 'support', 'owner', 'source']);
+const NULLABLE_SORT_COLUMNS = new Set(['mrr', 'plan', 'renewal', 'onboarding', 'pipeline', 'lastContact', 'support', 'owner', 'source']);
+
+const LATERAL_DEPENDENT_SORTS = new Set(['onboarding', 'pipeline', 'lastContact', 'support']);
 
 export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-    const pageSize = 25;
+    const pageSize = 50;
     const offset = (page - 1) * pageSize;
     const q = searchParams.get('q') ?? '';
     const viewAll = searchParams.get('viewAll') === 'true';
@@ -77,7 +80,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
 
-    const rows = await pgQuery<{
+    type ClientRow = {
       id: string; hubspot_id: string; name: string; domain: string | null;
       industry: string | null; plan: string | null; mrr: string | null;
       renewal_date: string | null; cs_owner_id: string | null;
@@ -91,31 +94,9 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       last_engagement_hubspot_id: string | null; last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
       last_engagement_email_from: string | null; last_engagement_email_to: string | null;
       last_engagement_call_direction: string | null; last_engagement_call_disposition: string | null; last_engagement_call_title: string | null;
-    }>(
-      `SELECT
-        c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
-        c.renewal_date, c.cs_owner_id, c.onboarding_status,
-        c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
-        c.last_contact_date,
-        ob.hubspot_id AS ob_hubspot_id,
-        ob.pipeline AS ob_pipeline,
-        ob.status AS ob_status,
-        ob.subject AS ob_subject,
-        ob.activated_at AS ob_activated_at,
-        (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') AS support_count,
-        st.hubspot_id AS st_hubspot_id,
-        st.status AS st_status,
-        st.subject AS st_subject,
-        le.hubspot_id AS last_engagement_hubspot_id,
-        le.type AS last_engagement_type,
-        le.occurred_at AS last_engagement_at,
-        le.owner_id AS last_engagement_owner,
-        (le.raw_properties::jsonb->>'hs_email_from_firstname') || ' ' || (le.raw_properties::jsonb->>'hs_email_from_lastname') AS last_engagement_email_from,
-        (le.raw_properties::jsonb->>'hs_email_to_firstname') || ' ' || (le.raw_properties::jsonb->>'hs_email_to_lastname') AS last_engagement_email_to,
-        le.raw_properties::jsonb->>'hs_call_direction' AS last_engagement_call_direction,
-        le.raw_properties::jsonb->>'hs_call_disposition' AS last_engagement_call_disposition,
-        le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title
-      FROM clients c
+    };
+
+    const lateralJoinsTickets = `
       LEFT JOIN LATERAL (
         SELECT hubspot_id, pipeline, status, subject, activated_at FROM tickets
         WHERE client_id = c.id AND pipeline = '0'
@@ -125,18 +106,125 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         SELECT hubspot_id, status, subject FROM tickets
         WHERE client_id = c.id AND closed_at IS NULL AND pipeline = '1249920186'
         ORDER BY opened_at DESC LIMIT 1
-      ) st ON true
+      ) st ON true`;
+
+    const lateralJoinEngagement = `
       LEFT JOIN LATERAL (
-        SELECT e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.raw_properties FROM engagements e
-        WHERE e.type IN ('CALL', 'EMAIL', 'MEETING', 'INCOMING_EMAIL')
-          AND (e.client_id = c.id OR e.contact_id IN (SELECT co.id FROM contacts co WHERE co.client_id = c.id))
-        ORDER BY e.occurred_at DESC LIMIT 1
-      ) le ON true
-      ${where}
-      ORDER BY ${orderBy}
-      LIMIT ${pageSize} OFFSET ${offset}`,
-      params
-    );
+        SELECT hubspot_id, type, occurred_at, owner_id, raw_properties FROM (
+          SELECT e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.raw_properties
+          FROM engagements e
+          WHERE e.client_id = c.id AND e.type IN ('CALL', 'EMAIL', 'MEETING', 'INCOMING_EMAIL')
+          UNION ALL
+          SELECT e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.raw_properties
+          FROM engagements e
+          JOIN contacts co ON co.id = e.contact_id AND co.client_id = c.id
+          WHERE e.type IN ('CALL', 'EMAIL', 'MEETING', 'INCOMING_EMAIL')
+        ) combined
+        ORDER BY occurred_at DESC LIMIT 1
+      ) le ON true`;
+
+    const ticketSelects = `
+        ob.hubspot_id AS ob_hubspot_id,
+        ob.pipeline AS ob_pipeline,
+        ob.status AS ob_status,
+        ob.subject AS ob_subject,
+        ob.activated_at AS ob_activated_at,
+        (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') AS support_count,
+        st.hubspot_id AS st_hubspot_id,
+        st.status AS st_status,
+        st.subject AS st_subject`;
+
+    const engagementSelects = `
+        le.hubspot_id AS last_engagement_hubspot_id,
+        le.type AS last_engagement_type,
+        le.occurred_at AS last_engagement_at,
+        le.owner_id AS last_engagement_owner,
+        (le.raw_properties::jsonb->>'hs_email_from_firstname') || ' ' || (le.raw_properties::jsonb->>'hs_email_from_lastname') AS last_engagement_email_from,
+        (le.raw_properties::jsonb->>'hs_email_to_firstname') || ' ' || (le.raw_properties::jsonb->>'hs_email_to_lastname') AS last_engagement_email_to,
+        le.raw_properties::jsonb->>'hs_call_direction' AS last_engagement_call_direction,
+        le.raw_properties::jsonb->>'hs_call_disposition' AS last_engagement_call_disposition,
+        le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title`;
+
+    const engagementNulls = `
+        NULL::text AS last_engagement_hubspot_id,
+        NULL::text AS last_engagement_type,
+        NULL::timestamptz AS last_engagement_at,
+        NULL::text AS last_engagement_owner,
+        NULL::text AS last_engagement_email_from,
+        NULL::text AS last_engagement_email_to,
+        NULL::text AS last_engagement_call_direction,
+        NULL::text AS last_engagement_call_disposition,
+        NULL::text AS last_engagement_call_title`;
+
+    const useViewAll = viewAll && !LATERAL_DEPENDENT_SORTS.has(sortKey);
+
+    let rows;
+    if (useViewAll) {
+      // Admin/viewAll: skip engagement lateral join entirely for speed, use last_contact_date instead
+      rows = await pgQuery<ClientRow>(
+        `WITH page AS (
+          SELECT c.id
+          FROM clients c
+          ${where}
+          ORDER BY ${orderBy}
+          LIMIT ${pageSize} OFFSET ${offset}
+        )
+        SELECT
+          c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
+          c.renewal_date, c.cs_owner_id, c.onboarding_status,
+          c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
+          c.last_contact_date,
+          ${ticketSelects},
+          ${engagementNulls}
+        FROM page
+        JOIN clients c ON c.id = page.id
+        ${lateralJoinsTickets}
+        ORDER BY ${orderBy}`,
+        params
+      );
+    } else if (!LATERAL_DEPENDENT_SORTS.has(sortKey)) {
+      // Owner view with simple sort: CTE + full lateral joins on page only
+      rows = await pgQuery<ClientRow>(
+        `WITH page AS (
+          SELECT c.id
+          FROM clients c
+          ${where}
+          ORDER BY ${orderBy}
+          LIMIT ${pageSize} OFFSET ${offset}
+        )
+        SELECT
+          c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
+          c.renewal_date, c.cs_owner_id, c.onboarding_status,
+          c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
+          c.last_contact_date,
+          ${ticketSelects},
+          ${engagementSelects}
+        FROM page
+        JOIN clients c ON c.id = page.id
+        ${lateralJoinsTickets}
+        ${lateralJoinEngagement}
+        ORDER BY ${orderBy}`,
+        params
+      );
+    } else {
+      // Sort depends on lateral join data -- must join before paginating
+      rows = await pgQuery<ClientRow>(
+        `SELECT
+          c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
+          c.renewal_date, c.cs_owner_id, c.onboarding_status,
+          c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
+          c.last_contact_date,
+          ${ticketSelects},
+          ${engagementSelects}
+        FROM clients c
+        ${lateralJoinsTickets}
+        ${lateralJoinEngagement}
+        ${where}
+        ORDER BY ${orderBy}
+        LIMIT ${pageSize} OFFSET ${offset}`,
+        params
+      );
+    }
 
     const data = rows.rows.map(r => ({
       id: r.id,
