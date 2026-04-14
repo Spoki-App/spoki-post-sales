@@ -14,7 +14,7 @@ import { getOwnerName } from '@/lib/config/owners';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
 import { EmailGeneratorModal } from '@/components/ui/EmailGeneratorModal';
 import { QbrModal } from '@/components/ui/QbrModal';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation } from 'lucide-react';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Sparkles, Loader2, Presentation, BotMessageSquare } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus, AccountBriefPayload } from '@/types';
@@ -241,8 +241,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             onClick={() => setShowWorkflowModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
           >
-            <Zap className="w-4 h-4 text-amber-500" />
-            Workflow
+            <BotMessageSquare className="w-4 h-4 text-emerald-600" />
+            AI Vocale
           </button>
           {client.onboardingStage && (
             <OnboardingStageBadge
@@ -634,7 +634,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       <WorkflowEnrollModal
         open={showWorkflowModal}
         onClose={() => setShowWorkflowModal(false)}
-        companyHubspotId={client.hubspotId}
         companyName={client.name}
         clientId={id}
       />
