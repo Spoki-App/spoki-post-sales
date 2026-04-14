@@ -304,9 +304,9 @@ export default function ClientsPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="py-12 text-center text-slate-400">Caricamento...</td></tr>
+                <tr><td colSpan={11} className="py-12 text-center text-slate-400">Caricamento...</td></tr>
               ) : clients.length === 0 ? (
-                <tr><td colSpan={9} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={11} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">

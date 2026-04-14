@@ -48,10 +48,11 @@ function pickKeys(obj: Record<string, unknown> | undefined | null, allowed: Set<
     if (k in obj && obj[k] != null && obj[k] !== '') {
       let v = obj[k];
       if (typeof v === 'string') {
-        v = v.replace(/\u0000/g, '');
-        if (truncateKeys?.has(k) && v.length > TRUNCATE_AT) {
-          v = (v as string).slice(0, TRUNCATE_AT);
+        let s = v.replace(/\u0000/g, '');
+        if (truncateKeys?.has(k) && s.length > TRUNCATE_AT) {
+          s = s.slice(0, TRUNCATE_AT);
         }
+        v = s;
       }
       out[k] = v;
     }

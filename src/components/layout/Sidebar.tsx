@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
-import { getOwnerByEmail, isAdminEmail } from '@/lib/config/owners';
+import { getOwnerByEmail, isAdminEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
 import { cn } from '@/lib/utils/cn';
 import { useEffect, useState } from 'react';
 import {
@@ -35,6 +35,7 @@ export function Sidebar() {
   const { user, signOut: clearAuth } = useAuthStore();
   const isAdmin = isAdminEmail(user?.email ?? '');
   const isOwner = !!getOwnerByEmail(user?.email ?? '') && !isAdmin;
+  const isCs = isCustomerSuccessTeamMember(getOwnerByEmail(user?.email ?? ''));
 
   async function handleSignOut() {
     const auth = getFirebaseAuth();
@@ -68,7 +69,7 @@ export function Sidebar() {
           Dashboard
         </Link>
 
-        {/* Clienti — tre sottovoci per owner, vista flat per manager */}
+        {/* Clienti — due sottovoci (company / onboarding), vista flat per manager */}
         {isOwner ? (
           <div>
             <div className="flex items-center gap-3 px-3 py-2 text-sm text-emerald-400">
@@ -105,6 +106,36 @@ export function Sidebar() {
             <Users className="w-4 h-4 shrink-0" />
             Clienti
           </Link>
+        )}
+
+        {isCs && (
+          <div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-emerald-400">
+              <HeartHandshake className="w-4 h-4 shrink-0" />
+              <span>Customer Success</span>
+            </div>
+            <div className="ml-4 space-y-0.5">
+              {[
+                { href: '/customer-success/dashboard', label: 'Dashboard CS' },
+                { href: '/customer-success/pipeline', label: 'Pipeline CS' },
+                { href: '/customer-success/clients', label: 'Clienti CS' },
+              ].map(({ href, label }) => {
+                const active = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      active ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
+                    )}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Task, Alert, Report */}

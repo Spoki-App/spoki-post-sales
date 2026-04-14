@@ -17,7 +17,7 @@ import { QbrModal } from '@/components/ui/QbrModal';
 import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Sparkles, Loader2, Presentation, BotMessageSquare } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Client, HealthScore, Ticket, Engagement, Contact, Task, OnboardingProgress, HealthStatus, AccountBriefPayload } from '@/types';
+import type { Client, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
 import { formatMrrDisplay } from '@/lib/format/mrr';
 import { MrrTrendChart } from '@/components/dashboard/MrrTrendChart';
 import { PaymentStatusCard } from '@/components/dashboard/PaymentStatusCard';

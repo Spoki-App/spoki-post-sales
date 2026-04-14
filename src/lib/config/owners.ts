@@ -54,6 +54,10 @@ export function getOwnerByEmail(email: string | null | undefined): HubSpotOwner 
   return Object.values(HUBSPOT_OWNERS).find(o => o.email.toLowerCase() === resolved) ?? null;
 }
 
+export function isCustomerSuccessTeamMember(owner: HubSpotOwner | null | undefined): boolean {
+  return owner?.team === 'Customer Success';
+}
+
 export function getOwnerName(ownerId: string | null | undefined): string {
   if (!ownerId) return '—';
   const owner = HUBSPOT_OWNERS[ownerId];

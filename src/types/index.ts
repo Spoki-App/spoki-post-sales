@@ -22,6 +22,8 @@ export interface Client {
   updatedAt: string;
 }
 
+export type HealthStatus = 'green' | 'yellow' | 'red';
+
 export interface ClientWithHealth extends Client {
   onboardingTicket: {
     hubspotId: string;
