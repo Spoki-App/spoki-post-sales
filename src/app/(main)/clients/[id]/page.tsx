@@ -634,7 +634,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       <WorkflowEnrollModal
         open={showWorkflowModal}
         onClose={() => setShowWorkflowModal(false)}
-        companyHubspotId={client.hubspotId}
         companyName={client.name}
         clientId={id}
       />

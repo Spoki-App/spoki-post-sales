@@ -213,10 +213,10 @@ export const aiApi = {
       topOpportunities: Array<{ client: string; reason: string }>;
       recommendations: string[];
     }>>('/ai/portfolio-insights', { method: 'POST', token }),
-  generateQbr: (token: string, clientId: string) =>
+  generateQbr: (token: string, clientId: string, language?: string) =>
     fetchApi<ApiResponse<Array<{ title: string; content: string; type: string }>>>('/ai/generate-qbr', {
       method: 'POST',
-      body: JSON.stringify({ clientId }),
+      body: JSON.stringify({ clientId, language }),
       token,
     }),
   generateEmail: (token: string, clientId: string, type: string, customInstructions?: string) =>
