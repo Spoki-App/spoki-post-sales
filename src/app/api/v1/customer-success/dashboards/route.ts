@@ -8,7 +8,7 @@ import {
 import { pgQuery } from '@/lib/db/postgres';
 import { requireCsOwner } from '@/lib/customer-success/require-cs-owner';
 import { CS_PIPELINE_STAGES } from '@/lib/config/cs-pipeline';
-import { CS_HUBSPOT_REFERENCE_LINKS } from '@/lib/config/cs-hubspot-dashboards';
+import { CS_HUBSPOT_DASHBOARD_EMBED } from '@/lib/config/cs-hubspot-dashboards';
 
 export const GET = withAuth(async (_req: NextRequest, auth: AuthenticatedRequest) => {
   try {
@@ -76,7 +76,7 @@ export const GET = withAuth(async (_req: NextRequest, auth: AuthenticatedRequest
 
     const eligibleToAddCount = parseInt(eligibleToAdd.rows[0]?.n ?? '0', 10);
 
-    const hubspotReference = CS_HUBSPOT_REFERENCE_LINKS[owner.id] ?? null;
+    const hubspotDashboard = CS_HUBSPOT_DASHBOARD_EMBED[owner.id] ?? null;
 
     return createSuccessResponse({
       data: {
@@ -90,7 +90,7 @@ export const GET = withAuth(async (_req: NextRequest, auth: AuthenticatedRequest
           eligibleToAddCount,
           byStage: pipelineByStage,
         },
-        hubspotReference,
+        hubspotDashboard,
       },
     });
   } catch (error) {

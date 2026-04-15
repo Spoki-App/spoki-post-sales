@@ -90,7 +90,11 @@ export const customerSuccessApi = {
           eligibleToAddCount: number;
           byStage: Array<{ stage: string; label: string; count: number }>;
         };
-        hubspotReference: { label: string; url: string } | null;
+        hubspotDashboard: {
+          title: string;
+          embedUrl: string;
+          openUrl: string;
+        } | null;
       }>
     >('/customer-success/dashboards', { token }),
   clients: (token: string, params?: { page?: number; q?: string }) => {
@@ -209,10 +213,10 @@ export const aiApi = {
       topOpportunities: Array<{ client: string; reason: string }>;
       recommendations: string[];
     }>>('/ai/portfolio-insights', { method: 'POST', token }),
-  generateQbr: (token: string, clientId: string, language: string = 'it') =>
+  generateQbr: (token: string, clientId: string) =>
     fetchApi<ApiResponse<Array<{ title: string; content: string; type: string }>>>('/ai/generate-qbr', {
       method: 'POST',
-      body: JSON.stringify({ clientId, language }),
+      body: JSON.stringify({ clientId }),
       token,
     }),
   generateEmail: (token: string, clientId: string, type: string, customInstructions?: string) =>
