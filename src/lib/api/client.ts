@@ -189,6 +189,19 @@ export const onboardingApi = {
     }),
 };
 
+// ─── Onboarding Hub ──────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const onboardingHubApi = {
+  clients: (token: string, params: { q?: string; page?: number }) => {
+    const qs = new URLSearchParams(params as Record<string, string>).toString();
+    return fetchApi<PaginatedResponse<any>>(`/onboarding-hub/clients${qs ? `?${qs}` : ''}`, { token });
+  },
+  dashboard: (token: string) =>
+    fetchApi<ApiResponse<any>>('/onboarding-hub/dashboard', { token }),
+  pipeline: (token: string) =>
+    fetchApi<ApiResponse<any>>('/onboarding-hub/pipeline', { token }),
+};
+
 // ─── Workflows ────────────────────────────────────────────────────────────────
 export const workflowsApi = {
   list: (token: string) =>

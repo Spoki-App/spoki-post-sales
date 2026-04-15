@@ -43,7 +43,7 @@ export function OnboardingKanban({ cards }: Props) {
       }
     }
 
-    const cols = ONBOARDING_HAPPY_PATH.map(s => ({
+    const cols: Array<{ id: string; label: string; cards: OnboardingCard[] }> = ONBOARDING_HAPPY_PATH.map(s => ({
       id: s.id,
       label: s.label,
       cards: grouped.get(s.id) ?? [],
