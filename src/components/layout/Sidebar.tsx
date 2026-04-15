@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
-import { getOwnerByEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
+import { getOwnerByEmail, isAdminEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
 import { cn } from '@/lib/utils/cn';
 import { useEffect, useState } from 'react';
 import {
@@ -21,6 +21,7 @@ import {
   HeartHandshake,
   Database,
   AlertTriangle,
+  Phone,
 } from 'lucide-react';
 
 const CLIENT_SECTIONS = [
@@ -33,7 +34,8 @@ export function Sidebar() {
   const searchParams = useSearchParams();
   const currentSection = searchParams.get('section') ?? '';
   const { user, signOut: clearAuth } = useAuthStore();
-  const isOwner = !!getOwnerByEmail(user?.email ?? '');
+  const isAdmin = isAdminEmail(user?.email ?? '');
+  const isOwner = !!getOwnerByEmail(user?.email ?? '') && !isAdmin;
   const isCs = isCustomerSuccessTeamMember(getOwnerByEmail(user?.email ?? ''));
 
   async function handleSignOut() {
@@ -137,11 +139,15 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Task, Alert, Report */}
+        {/* Task, Alert, Churn, Report (+ Attivazioni admin) */}
         {[
           { href: '/tasks', label: 'Task', Icon: CheckSquare },
           { href: '/alerts', label: 'Alert', Icon: Bell },
           { href: '/churn-tracker', label: 'Churn Tracker', Icon: AlertTriangle },
+          ...(isAdmin ? [
+            { href: '/team-reports', label: 'Attivazioni - Report', Icon: Phone },
+            { href: '/training-reports', label: 'Training - Report', Icon: GraduationCap }
+          ] as const : []),
           { href: '/reports', label: 'Report', Icon: BarChart3 },
         ].map(({ href, label, Icon }) => (
           <Link
@@ -170,6 +176,11 @@ export function Sidebar() {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-medium text-emerald-100 truncate">{user.displayName ?? user.email}</p>
+              {isAdmin && (
+                <p className="mt-0.5 inline-flex items-center rounded-full bg-emerald-700/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+                  Admin
+                </p>
+              )}
             </div>
           </div>
         )}

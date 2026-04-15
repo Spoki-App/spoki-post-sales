@@ -14,7 +14,10 @@ export function NrrGrrCards() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     dashboardDataApi.nrrGrr(token)
       .then(res => setData(res.data ?? []))

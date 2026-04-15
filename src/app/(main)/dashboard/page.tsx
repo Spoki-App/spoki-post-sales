@@ -11,7 +11,6 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { SyncButton } from '@/components/ui/SyncButton';
 import { formatMrrDisplay } from '@/lib/format/mrr';
-import { getOwnerByEmail, isAdminEmail } from '@/lib/config/owners';
 import type { ClientWithHealth, Alert } from '@/types';
 import { NrrGrrCards } from '@/components/dashboard/NrrGrrCards';
 import { DailyKpisWidget } from '@/components/dashboard/DailyKpisWidget';
@@ -54,21 +53,24 @@ function clientMrrLine(mrr: number | null) {
 }
 
 export default function DashboardPage() {
-  const { token, user } = useAuthStore();
-  const isAdmin = !getOwnerByEmail(user?.email ?? '') || isAdminEmail(user?.email);
+  const { token } = useAuthStore();
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
   const [previewClients, setPreviewClients] = useState<ClientWithHealth[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [sumRes, alertsRes, clientsRes] = await Promise.all([
         reportsApi.summary(token),
         alertsApi.list(token, { resolved: false }),
-        clientsApi.list(token, isAdmin ? { viewAll: true } : {}),
+        // Dashboard needs only a short preview, not the full clients dataset.
+        clientsApi.list(token, { page: 1 }),
       ]);
       if (sumRes.data) setSummary(sumRes.data as unknown as SummaryData);
       setRecentAlerts(alertsRes.data.slice(0, 5));
@@ -76,7 +78,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, isAdmin]);
+  }, [token]);
 
   useEffect(() => { load(); }, [load]);
 

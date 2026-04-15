@@ -11,14 +11,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const auth = getFirebaseAuth();
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        const token = await user.getIdToken();
-        setToken(token);
-      } else {
+      try {
+        setUser(user);
+        if (user) {
+          const token = await user.getIdToken();
+          setToken(token);
+        } else {
+          setToken(null);
+        }
+      } catch {
+        // If token retrieval fails, force logout state to avoid infinite loading in protected layouts.
+        setUser(null);
         setToken(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return unsubscribe;
   }, [setUser, setToken, setLoading]);

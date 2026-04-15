@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { Badge } from '@/components/ui/Badge';
@@ -10,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Search, ChevronRight, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { getOwnerName, getOwnerByEmail } from '@/lib/config/owners';
+import { getOwnerName, getOwnerByEmail, isAdminEmail, HUBSPOT_OWNERS } from '@/lib/config/owners';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth } from '@/types';
@@ -151,51 +150,52 @@ function RenewalCell({ date }: { date: string | null }) {
 export default function ClientsPage() {
   const { token } = useAuthStore();
   const { user } = useAuthStore();
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const rawSection = searchParams.get('section') ?? 'all';
-  const section = (rawSection === 'success' ? 'all' : rawSection) as 'all' | 'onboarding' | 'company';
-
-  useEffect(() => {
-    if (searchParams.get('section') !== 'success') return;
-    const p = new URLSearchParams(searchParams.toString());
-    p.set('section', 'all');
-    router.replace(`/clients?${p.toString()}`);
-  }, [searchParams, router]);
-  const isOwner = !!getOwnerByEmail(user?.email ?? '');
+  const isAdmin = isAdminEmail(user?.email ?? '');
+  const hasOwnerProfile = !!getOwnerByEmail(user?.email ?? '');
 
   const [clients, setClients] = useState<ClientWithHealth[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [selectedOwner, setSelectedOwner] = useState('');
 
-  const SECTION_LABELS: Record<string, string> = {
-    company: 'Company Owner',
-    onboarding: 'Customer Onboarding Owner',
-    all: 'Tutti i clienti',
-  };
+  const CS_OWNERS = Object.values(HUBSPOT_OWNERS).filter(o => o.team === 'Customer Success');
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
+    setLoadError(null);
+
+    const controller = new AbortController();
+    const timeoutMs = 60_000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
-      const params = {
+      const params: Parameters<typeof clientsApi.list>[1] = {
         page, q, sort: sortBy, dir: sortDir,
-        ...(!isOwner ? { viewAll: true } : { section }),
-      } as Parameters<typeof clientsApi.list>[1];
-      const res = await clientsApi.list(token, params);
+        ...(isAdmin || !hasOwnerProfile ? { viewAll: true } : {}),
+        ...(selectedOwner ? { owner: selectedOwner } : {}),
+      };
+      const res = await clientsApi.list(token, params, controller.signal);
       setClients(res.data);
       setTotal(res.total);
     } catch (e) {
-      console.error(e);
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setLoadError('La richiesta sta impiegando troppo tempo. Riprova tra qualche secondo.');
+      } else {
+        setLoadError('Errore nel caricamento clienti. Riprova.');
+        console.error(e);
+      }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [token, page, q, isOwner, section, sortBy, sortDir]);
+  }, [token, page, q, isAdmin, hasOwnerProfile, sortBy, sortDir, selectedOwner]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -208,13 +208,17 @@ export default function ClientsPage() {
   const totalPages = Math.ceil(total / 25);
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto">
+    <div className="relative py-6">
+      {loading && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-0.5 bg-emerald-100 overflow-hidden">
+          <div className="absolute inset-y-0 bg-emerald-500 animate-nprogress-1" />
+          <div className="absolute inset-y-0 bg-emerald-500 animate-nprogress-2" />
+        </div>
+      )}
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 px-6">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">
-            {SECTION_LABELS[section] ?? 'Clienti'}
-          </h1>
+          <h1 className="text-xl font-semibold text-slate-900">Clienti</h1>
           <p className="text-sm text-slate-500 mt-0.5">{total} aziende</p>
         </div>
         <button onClick={load} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
@@ -224,7 +228,7 @@ export default function ClientsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-5">
+      <div className="flex flex-wrap gap-3 mb-5 px-6">
         <form onSubmit={handleSearch} className="flex items-center gap-2 flex-1 min-w-60">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -240,7 +244,30 @@ export default function ClientsPage() {
             Cerca
           </button>
         </form>
+        <select
+          value={selectedOwner}
+          onChange={e => { setSelectedOwner(e.target.value); setPage(1); }}
+          className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+        >
+          <option value="">Tutti gli owner</option>
+          {CS_OWNERS.map(o => (
+            <option key={o.id} value={o.id}>{o.firstName} {o.lastName}</option>
+          ))}
+        </select>
       </div>
+
+
+      {loadError && (
+        <div className="mb-4 mx-6 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>{loadError}</span>
+          <button
+            onClick={load}
+            className="ml-4 shrink-0 rounded-md bg-amber-100 px-3 py-1 text-xs font-medium hover:bg-amber-200 transition-colors"
+          >
+            Riprova
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <Card padding="none">
@@ -251,8 +278,7 @@ export default function ClientsPage() {
                 {([
                   { label: 'Azienda', key: 'name' },
                   { label: 'Fonte', key: 'source' },
-                  { label: 'Onboarding', key: null },
-                  { label: 'Salute', key: null },
+                  { label: 'Onboarding', key: 'onboarding' },
                   { label: 'Giorni in pipeline', key: 'pipeline' },
                   { label: 'MRR', key: 'mrr' },
                   { label: 'Piano', key: 'plan' },
@@ -269,7 +295,7 @@ export default function ClientsPage() {
                         setSortDir(d => d === 'asc' ? 'desc' : 'asc');
                       } else {
                         setSortBy(col.key);
-                        setSortDir(['mrr', 'renewal', 'pipeline', 'lastContact', 'support'].includes(col.key) ? 'desc' : 'asc');
+                        setSortDir(['mrr', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support'].includes(col.key) ? 'desc' : 'asc');
                       }
                       setPage(1);
                     } : undefined}
@@ -289,7 +315,21 @@ export default function ClientsPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="py-12 text-center text-slate-400">Caricamento...</td></tr>
+                Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i} className="border-b border-slate-100 animate-pulse">
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-40 mb-1" /><div className="h-3 bg-slate-100 rounded w-24" /></td>
+                    <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-16" /></td>
+                    <td className="px-4 py-3"><div className="h-3 bg-slate-100 rounded w-28" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-14" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-16" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-20" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-24" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-32" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-20" /></td>
+                    <td className="px-4 py-3" />
+                  </tr>
+                ))
               ) : clients.length === 0 ? (
                 <tr><td colSpan={11} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (

@@ -49,6 +49,10 @@ export const config = {
     user: process.env.GMAIL_USER || '',
     appPassword: process.env.GMAIL_APP_PASSWORD || '',
   },
+  fathom: {
+    apiKey: process.env.FATHOM_API_KEY || '',
+    baseUrl: (process.env.FATHOM_API_BASE_URL || 'https://api.fathom.ai').replace(/\/$/, ''),
+  },
   accountBrief: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -62,11 +66,12 @@ export const config = {
   },
 };
 
-export function isConfigured(service: 'hubspot' | 'postgres' | 'metabase' | 'stripe' | 'gmail'): boolean {
+export function isConfigured(service: 'hubspot' | 'postgres' | 'metabase' | 'stripe' | 'gmail' | 'fathom'): boolean {
   if (service === 'hubspot') return !!config.hubspot.apiKey;
   if (service === 'postgres') return !!(config.postgres.host || config.postgres.instanceConnectionName) && !!config.postgres.user;
   if (service === 'metabase') return !!config.metabase.apiKey;
   if (service === 'stripe') return !!config.stripe.apiKey;
   if (service === 'gmail') return !!config.gmail.user && !!config.gmail.appPassword;
+  if (service === 'fathom') return !!config.fathom.apiKey;
   return false;
 }
