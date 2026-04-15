@@ -43,9 +43,13 @@ async function fetchApi<T>(
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 export const clientsApi = {
-  list: (token: string, params?: { page?: number; q?: string; owner?: string; viewAll?: boolean; section?: string; sort?: string; dir?: string }) => {
+  list: (
+    token: string,
+    params?: { page?: number; q?: string; owner?: string; onboardingOwner?: string; viewAll?: boolean; section?: string; sort?: string; dir?: string },
+    signal?: AbortSignal
+  ) => {
     const qs = new URLSearchParams(params as unknown as Record<string, string>).toString();
-    return fetchApi<PaginatedResponse<ClientWithHealth>>(`/clients${qs ? `?${qs}` : ''}`, { token });
+    return fetchApi<PaginatedResponse<ClientWithHealth>>(`/clients${qs ? `?${qs}` : ''}`, { token, signal });
   },
   get: (token: string, id: string) =>
     fetchApi<ApiResponse<Client>>(`/clients/${id}`, { token }),
@@ -253,6 +257,7 @@ export type TeamReportCallRow = {
 };
 
 export type ActivationCheckpointAnalysis = Record<string, boolean>;
+export type TrainingCheckpointAnalysis = Record<string, boolean>;
 
 export const teamReportsApi = {
   listCalls: (token: string, params: { type: string; days: number; owner?: string; outcome?: string }) => {
@@ -277,6 +282,54 @@ export const teamReportsApi = {
   analyzeBatch: async (token: string, hubspotIds: string[], signal?: AbortSignal) => {
     const post = (authToken: string | undefined) =>
       fetch('/api/v1/team-reports/calls/analyze-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ hubspotIds }),
+        signal,
+      });
+
+    let res = await post(token);
+    if (res.status === 401 && token) {
+      const user = getFirebaseAuth().currentUser;
+      if (user) {
+        const fresh = await user.getIdToken(true);
+        useAuthStore.getState().setToken(fresh);
+        res = await post(fresh);
+      }
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? `API error ${res.status}`);
+    }
+    return res;
+  },
+};
+
+export const trainingReportsApi = {
+  listCalls: (token: string, params: { days: number; owner?: string; outcome?: string }) => {
+    const qs = new URLSearchParams();
+    qs.set('days', String(params.days));
+    if (params.owner) qs.set('owner', params.owner);
+    if (params.outcome) qs.set('outcome', params.outcome);
+    const q = qs.toString();
+    return fetchApi<ApiResponse<TeamReportCallRow[]> & { total?: number }>(
+      `/training-reports/calls${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  analyzeCall: (token: string, hubspotId: string) =>
+    fetchApi<ApiResponse<{ analysis: TrainingCheckpointAnalysis; fathomUrl?: string }>>(
+      `/training-reports/calls/${encodeURIComponent(hubspotId)}/analyze`,
+      { method: 'POST', token },
+    ),
+
+  analyzeBatch: async (token: string, hubspotIds: string[], signal?: AbortSignal) => {
+    const post = (authToken: string | undefined) =>
+      fetch('/api/v1/training-reports/calls/analyze-batch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

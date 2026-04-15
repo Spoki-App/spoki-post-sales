@@ -4,7 +4,7 @@ import { isAdminEmail, HUBSPOT_OWNERS } from '@/lib/config/owners';
 import { isConfigured } from '@/lib/config';
 import { pgQuery } from '@/lib/db/postgres';
 import { listMeetings } from '@/lib/services/fathom';
-import { analyzeActivationCall } from '@/lib/services/meeting-analysis';
+import { analyzeTrainingCall } from '@/lib/services/meeting-analysis';
 
 export const POST = withAuth(async (_request: NextRequest, auth, context?: RouteHandlerContext) => {
   if (!isAdminEmail(auth.email)) {
@@ -94,7 +94,7 @@ export const POST = withAuth(async (_request: NextRequest, auth, context?: Route
       throw new ApiError(400, 'Trascrizione non disponibile su Fathom per questo meeting');
     }
 
-    const analysis = await analyzeActivationCall(match.transcript);
+    const analysis = await analyzeTrainingCall(match.transcript);
 
     return createSuccessResponse({
       data: {

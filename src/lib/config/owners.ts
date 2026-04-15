@@ -22,6 +22,7 @@ export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {
 
   "31909019":   { id: "31909019",   email: "katerina.khorzhan@spoki.com",   firstName: "Katerina",   lastName: "Khorzhan",    team: "Customer Success" },
   "32876649":   { id: "32876649",   email: "lucrezia.terreni@spoki.com",    firstName: "Lucrezia",   lastName: "Terreni",     team: "Customer Success" },
+  "32686457":   { id: "32686457",   email: "riccardo.marino@spoki.com",     firstName: "Riccardo",   lastName: "Marino",      team: "Customer Success" },
 
   // ─── Customer Support ────────────────────────────────────────────────────────
   "76083950":   { id: "76083950",   email: "daniele.intermite@spoki.it",     firstName: "Daniele",    lastName: "Intermite",   team: "Customer Support" },
@@ -31,6 +32,7 @@ export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {
 // Alternative email aliases for owners who log in with a different email than HubSpot
 const EMAIL_ALIASES: Record<string, string> = {
   'giulio.trinchera@spoki.com': 'giulio.trinchera@spoki.it',
+  'riccardo.marino@spoki.it': 'riccardo.marino@spoki.com',
 };
 
 const ADMIN_EMAILS = new Set([

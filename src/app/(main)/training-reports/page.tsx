@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth';
 import { useRouter } from 'next/navigation';
 import { isAdminEmail, HUBSPOT_OWNERS } from '@/lib/config/owners';
-import { teamReportsApi } from '@/lib/api/client';
-import { CHECKPOINT_LABELS } from '@/lib/services/meeting-analysis';
+import { trainingReportsApi } from '@/lib/api/client';
+import { TRAINING_CHECKPOINT_LABELS } from '@/lib/services/meeting-analysis';
 import { Card } from '@/components/ui/Card';
 import { Loader2, ExternalLink, CheckCircle2, XCircle, ChevronDown, ChevronUp, PlayCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -27,7 +27,7 @@ const CS_OWNERS = Object.values(HUBSPOT_OWNERS)
   .filter(o => o.team === 'Customer Success')
   .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
-export default function TeamReportsPage() {
+export default function TrainingReportsPage() {
   const { token, user } = useAuthStore();
   const router = useRouter();
   const isAdmin = isAdminEmail(user?.email);
@@ -57,8 +57,7 @@ export default function TeamReportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await teamReportsApi.listCalls(token, {
-        type: 'activation',
+      const res = await trainingReportsApi.listCalls(token, {
         days,
         ...(ownerFilter ? { owner: ownerFilter } : {}),
         ...(outcomeFilter !== 'all' ? { outcome: outcomeFilter } : {}),
@@ -78,7 +77,7 @@ export default function TeamReportsPage() {
     setAnalyzing(hubspotId);
     setError(null);
     try {
-      const res = await teamReportsApi.analyzeCall(token, hubspotId);
+      const res = await trainingReportsApi.analyzeCall(token, hubspotId);
       if (res.data?.analysis) {
         setAnalyses(prev => ({ ...prev, [hubspotId]: res.data!.analysis }));
         if (res.data.fathomUrl) {
@@ -108,7 +107,7 @@ export default function TeamReportsPage() {
     setError(null);
 
     try {
-      const res = await teamReportsApi.analyzeBatch(token, unanalyzedIds, abort.signal);
+      const res = await trainingReportsApi.analyzeBatch(token, unanalyzedIds, abort.signal);
       const reader = res.body?.getReader();
       if (!reader) throw new Error('No response stream');
 
@@ -172,13 +171,13 @@ export default function TeamReportsPage() {
   if (!isAdmin) return null;
 
   const PERIODS = [30, 60, 90, 120, 150] as const;
-  const checkpointKeys = Object.keys(CHECKPOINT_LABELS) as (keyof typeof CHECKPOINT_LABELS)[];
+  const checkpointKeys = Object.keys(TRAINING_CHECKPOINT_LABELS) as (keyof typeof TRAINING_CHECKPOINT_LABELS)[];
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Attivazioni - Report</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Analisi chiamate di attivazione dal team</p>
+        <h1 className="text-xl font-semibold text-slate-900">Training - Report</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Analisi chiamate di training dal team</p>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-6">
@@ -301,7 +300,7 @@ export default function TeamReportsPage() {
               {loading ? (
                 <tr><td colSpan={7} className="py-12 text-center"><Loader2 className="w-5 h-5 text-emerald-500 animate-spin mx-auto" /></td></tr>
               ) : calls.length === 0 ? (
-                <tr><td colSpan={7} className="py-12 text-center text-slate-400">Nessuna chiamata di attivazione trovata.</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-slate-400">Nessuna chiamata di training trovata.</td></tr>
               ) : (
                 calls.map(call => {
                   const analysis = analyses[call.hubspotId];
@@ -384,8 +383,8 @@ export default function TeamReportsPage() {
                               onClick={() => setExpanded(isExpanded ? null : call.hubspotId)}
                               className="inline-flex items-center gap-1.5 text-xs font-medium"
                             >
-                              <span className={passedCount === 7 ? 'text-emerald-600' : passedCount! >= 5 ? 'text-amber-600' : 'text-red-600'}>
-                                {passedCount}/7
+                              <span className={passedCount === 6 ? 'text-emerald-600' : passedCount! >= 4 ? 'text-amber-600' : 'text-red-600'}>
+                                {passedCount}/6
                               </span>
                               {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
                             </button>
@@ -401,7 +400,7 @@ export default function TeamReportsPage() {
                                       ) : (
                                         <XCircle className="w-4 h-4 text-red-400 shrink-0" />
                                       )}
-                                      <p className="text-xs text-slate-700">{CHECKPOINT_LABELS[key]}</p>
+                                      <p className="text-xs text-slate-700">{TRAINING_CHECKPOINT_LABELS[key]}</p>
                                     </div>
                                   );
                                 })}

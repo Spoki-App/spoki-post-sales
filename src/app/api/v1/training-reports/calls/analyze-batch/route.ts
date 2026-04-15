@@ -4,10 +4,10 @@ import { isAdminEmail, HUBSPOT_OWNERS } from '@/lib/config/owners';
 import { isConfigured } from '@/lib/config';
 import { pgQuery } from '@/lib/db/postgres';
 import { listMeetings } from '@/lib/services/fathom';
-import { analyzeActivationCall } from '@/lib/services/meeting-analysis';
+import { analyzeTrainingCall } from '@/lib/services/meeting-analysis';
 import { getLogger } from '@/lib/logger';
 
-const logger = getLogger('api:team-reports:analyze-batch');
+const logger = getLogger('api:training-reports:analyze-batch');
 
 const MAX_CONCURRENCY = 2;
 const encoder = new TextEncoder();
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
             }));
 
             try {
-              const analysis = await analyzeActivationCall(job.transcript);
+              const analysis = await analyzeTrainingCall(job.transcript);
               counters.analyzed++;
 
               controller.enqueue(sse('result', {
