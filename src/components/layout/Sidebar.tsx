@@ -21,6 +21,7 @@ import {
   HeartHandshake,
   Database,
   AlertTriangle,
+  Phone,
 } from 'lucide-react';
 
 const CLIENT_SECTIONS = [
@@ -138,11 +139,12 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Task, Alert, Report */}
+        {/* Task, Alert, Churn, Report (+ Attivazioni admin) */}
         {[
           { href: '/tasks', label: 'Task', Icon: CheckSquare },
           { href: '/alerts', label: 'Alert', Icon: Bell },
           { href: '/churn-tracker', label: 'Churn Tracker', Icon: AlertTriangle },
+          ...(isAdmin ? [{ href: '/team-reports', label: 'Attivazioni - Report', Icon: Phone }] as const : []),
           { href: '/reports', label: 'Report', Icon: BarChart3 },
         ].map(({ href, label, Icon }) => (
           <Link

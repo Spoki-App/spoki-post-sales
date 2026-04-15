@@ -239,6 +239,66 @@ export const reportsApi = {
     fetchApi<ApiResponse<Record<string, unknown>>>('/reports/summary', { token }),
 };
 
+export type TeamReportCallRow = {
+  hubspotId: string;
+  title: string;
+  date: string;
+  outcome: string | null;
+  owner: { id: string | null; name: string };
+  client: { id: string | null; hubspotId: string | null; name: string; domain: string | null } | null;
+};
+
+export type ActivationCheckpointAnalysis = Record<string, boolean>;
+
+export const teamReportsApi = {
+  listCalls: (token: string, params: { type: string; days: number; owner?: string; outcome?: string }) => {
+    const qs = new URLSearchParams();
+    qs.set('type', params.type);
+    qs.set('days', String(params.days));
+    if (params.owner) qs.set('owner', params.owner);
+    if (params.outcome) qs.set('outcome', params.outcome);
+    const q = qs.toString();
+    return fetchApi<ApiResponse<TeamReportCallRow[]> & { total?: number }>(
+      `/team-reports/calls${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  analyzeCall: (token: string, hubspotId: string) =>
+    fetchApi<ApiResponse<{ analysis: ActivationCheckpointAnalysis; fathomUrl?: string }>>(
+      `/team-reports/calls/${encodeURIComponent(hubspotId)}/analyze`,
+      { method: 'POST', token },
+    ),
+
+  analyzeBatch: async (token: string, hubspotIds: string[], signal?: AbortSignal) => {
+    const post = (authToken: string | undefined) =>
+      fetch('/api/v1/team-reports/calls/analyze-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ hubspotIds }),
+        signal,
+      });
+
+    let res = await post(token);
+    if (res.status === 401 && token) {
+      const user = getFirebaseAuth().currentUser;
+      if (user) {
+        const fresh = await user.getIdToken(true);
+        useAuthStore.getState().setToken(fresh);
+        res = await post(fresh);
+      }
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? `API error ${res.status}`);
+    }
+    return res;
+  },
+};
+
 // ─── Dashboard Data (Metabase integration) ────────────────────────────────────
 import type {
   NrrGrrMonth, AccountPayments, SubscriptionHistoryEntry,
