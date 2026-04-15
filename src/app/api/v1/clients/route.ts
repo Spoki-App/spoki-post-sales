@@ -3,19 +3,30 @@ import { withAuth, createSuccessResponse, createErrorResponse, type Authenticate
 import { pgQuery } from '@/lib/db/postgres';
 import { getOwnerByEmail } from '@/lib/config/owners';
 
+const ONBOARDING_SORT_EXPR = `CASE ob.status
+  WHEN '1' THEN 1 WHEN '1011192836' THEN 2 WHEN '2' THEN 3
+  WHEN '2071331018' THEN 4 WHEN '3071245506' THEN 5 WHEN '1709021391' THEN 6
+  WHEN '2724350144' THEN 7 WHEN '2724350145' THEN 8 WHEN '1005076483' THEN 9
+  WHEN '2702656701' THEN -1 WHEN '2712273122' THEN -1 WHEN '4013788352' THEN -1
+  WHEN '1004962561' THEN -1 WHEN '1004887980' THEN -1 WHEN '4524518615' THEN -1
+  WHEN '4524518616' THEN -1
+  ELSE 0
+END`;
+
 const SORTABLE_COLUMNS: Record<string, string> = {
   name: 'c.name',
   mrr: 'c.mrr',
   plan: 'c.plan',
   renewal: 'c.renewal_date',
   pipeline: 'ob.activated_at',
-  lastContact: 'le.occurred_at',
-  support: 'support_count',
+  onboarding: ONBOARDING_SORT_EXPR,
+  lastContact: 'c.last_contact_date',
+  support: 'c.cs_owner_id',
   owner: 'c.cs_owner_id',
   source: 'c.purchase_source',
 };
 
-const NULLABLE_SORT_COLUMNS = new Set(['mrr', 'plan', 'renewal', 'pipeline', 'lastContact', 'support', 'owner', 'source']);
+const NULLABLE_SORT_COLUMNS = new Set(['mrr', 'plan', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support', 'owner', 'source']);
 
 export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequest) => {
   try {
@@ -39,6 +50,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const ownerSection = searchParams.get('section') ?? 'all';
     // section: 'all' | 'onboarding' | 'company'
     const owner = searchParams.get('owner') ?? '';
+    const onboardingOwner = searchParams.get('onboardingOwner') ?? '';
 
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -52,6 +64,10 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     if (owner) {
       conditions.push(`c.cs_owner_id = $${idx++}`);
       params.push(owner);
+    }
+    if (onboardingOwner) {
+      conditions.push(`c.onboarding_owner_id = $${idx++}`);
+      params.push(onboardingOwner);
     }
     // Section filter: which owner field to match against the logged-in user
     if (ownerFilter) {
@@ -77,6 +93,8 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
 
+    // Paginate first on bare clients (+ ticket lateral for pipeline sort), then
+    // do the heavy engagement lateral only on the resulting 25 rows.
     const rows = await pgQuery<{
       id: string; hubspot_id: string; name: string; domain: string | null;
       industry: string | null; plan: string | null; mrr: string | null;
@@ -92,17 +110,30 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       last_engagement_email_from: string | null; last_engagement_email_to: string | null;
       last_engagement_call_direction: string | null; last_engagement_call_disposition: string | null; last_engagement_call_title: string | null;
     }>(
-      `SELECT
-        c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
-        c.renewal_date, c.cs_owner_id, c.onboarding_status,
-        c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
-        c.last_contact_date,
-        ob.hubspot_id AS ob_hubspot_id,
-        ob.pipeline AS ob_pipeline,
-        ob.status AS ob_status,
-        ob.subject AS ob_subject,
-        ob.activated_at AS ob_activated_at,
-        (SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') AS support_count,
+      `WITH paged AS (
+        SELECT
+          c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
+          c.renewal_date, c.cs_owner_id, c.onboarding_status,
+          c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
+          c.last_contact_date,
+          ob.hubspot_id AS ob_hubspot_id,
+          ob.pipeline AS ob_pipeline,
+          ob.status AS ob_status,
+          ob.subject AS ob_subject,
+          ob.activated_at AS ob_activated_at
+        FROM clients c
+        LEFT JOIN LATERAL (
+          SELECT hubspot_id, pipeline, status, subject, activated_at FROM tickets
+          WHERE client_id = c.id AND pipeline = '0'
+          ORDER BY opened_at DESC LIMIT 1
+        ) ob ON true
+        ${where}
+        ORDER BY ${orderBy}
+        LIMIT ${pageSize} OFFSET ${offset}
+      )
+      SELECT
+        paged.*,
+        (SELECT COUNT(*) FROM tickets t WHERE t.client_id = paged.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') AS support_count,
         st.hubspot_id AS st_hubspot_id,
         st.status AS st_status,
         st.subject AS st_subject,
@@ -115,26 +146,21 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         le.raw_properties::jsonb->>'hs_call_direction' AS last_engagement_call_direction,
         le.raw_properties::jsonb->>'hs_call_disposition' AS last_engagement_call_disposition,
         le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title
-      FROM clients c
-      LEFT JOIN LATERAL (
-        SELECT hubspot_id, pipeline, status, subject, activated_at FROM tickets
-        WHERE client_id = c.id AND pipeline = '0'
-        ORDER BY opened_at DESC LIMIT 1
-      ) ob ON true
+      FROM paged
       LEFT JOIN LATERAL (
         SELECT hubspot_id, status, subject FROM tickets
-        WHERE client_id = c.id AND closed_at IS NULL AND pipeline = '1249920186'
+        WHERE client_id = paged.id AND closed_at IS NULL AND pipeline = '1249920186'
         ORDER BY opened_at DESC LIMIT 1
       ) st ON true
       LEFT JOIN LATERAL (
-        SELECT e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.raw_properties FROM engagements e
+        SELECT e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.raw_properties
+        FROM engagements e
         WHERE e.type IN ('CALL', 'EMAIL', 'MEETING', 'INCOMING_EMAIL')
-          AND (e.client_id = c.id OR e.contact_id IN (SELECT co.id FROM contacts co WHERE co.client_id = c.id))
+          AND (e.client_id = paged.id OR e.contact_id IN (
+            SELECT co.id FROM contacts co WHERE co.client_id = paged.id
+          ))
         ORDER BY e.occurred_at DESC LIMIT 1
-      ) le ON true
-      ${where}
-      ORDER BY ${orderBy}
-      LIMIT ${pageSize} OFFSET ${offset}`,
+      ) le ON true`,
       params
     );
 
