@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
-import { getOwnerByEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
+import { getOwnerByEmail, isAdminEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
 import { cn } from '@/lib/utils/cn';
 import { useEffect, useState } from 'react';
 import {
@@ -34,7 +34,8 @@ export function Sidebar() {
   const searchParams = useSearchParams();
   const currentSection = searchParams.get('section') ?? '';
   const { user, signOut: clearAuth } = useAuthStore();
-  const isOwner = !!getOwnerByEmail(user?.email ?? '');
+  const isAdmin = isAdminEmail(user?.email ?? '');
+  const isOwner = !!getOwnerByEmail(user?.email ?? '') && !isAdmin;
   const isCs = isCustomerSuccessTeamMember(getOwnerByEmail(user?.email ?? ''));
 
   async function handleSignOut() {
