@@ -14,7 +14,7 @@ import { getOwnerName } from '@/lib/config/owners';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
 import { EmailGeneratorModal } from '@/components/ui/EmailGeneratorModal';
 import { QbrModal } from '@/components/ui/QbrModal';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Sparkles, Loader2, Presentation, BotMessageSquare } from 'lucide-react';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import type { Client, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
@@ -175,7 +175,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const renewalDays = client.renewalDate ? differenceInDays(new Date(client.renewalDate), new Date()) : null;
 
   return (
-    <div className="p-6">
+    <div className="p-6 max-w-5xl mx-auto">
       {/* Back */}
       <Link href="/clients" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-5">
         <ArrowLeft className="w-4 h-4" /> Torna ai clienti
@@ -241,8 +241,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             onClick={() => setShowWorkflowModal(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
           >
-            <BotMessageSquare className="w-4 h-4 text-emerald-600" />
-            AI Vocale
+            <Zap className="w-4 h-4 text-amber-500" />
+            Workflow
           </button>
           {client.onboardingStage && (
             <OnboardingStageBadge

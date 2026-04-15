@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
-import { getOwnerByEmail, isAdminEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
+import { getOwnerByEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
 import { cn } from '@/lib/utils/cn';
 import { useEffect, useState } from 'react';
 import {
@@ -34,8 +34,7 @@ export function Sidebar() {
   const searchParams = useSearchParams();
   const currentSection = searchParams.get('section') ?? '';
   const { user, signOut: clearAuth } = useAuthStore();
-  const isAdmin = isAdminEmail(user?.email ?? '');
-  const isOwner = !!getOwnerByEmail(user?.email ?? '') && !isAdmin;
+  const isOwner = !!getOwnerByEmail(user?.email ?? '');
   const isCs = isCustomerSuccessTeamMember(getOwnerByEmail(user?.email ?? ''));
 
   async function handleSignOut() {
@@ -173,11 +172,6 @@ export function Sidebar() {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-medium text-emerald-100 truncate">{user.displayName ?? user.email}</p>
-              {isAdmin && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500 text-white mt-0.5">
-                  Admin
-                </span>
-              )}
             </div>
           </div>
         )}

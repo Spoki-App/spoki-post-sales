@@ -13,6 +13,7 @@ import {
   CalendarDays,
   ExternalLink,
   ArrowRight,
+  BarChart3,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -66,7 +67,7 @@ type CsDashboardData = {
     eligibleToAddCount: number;
     byStage: Array<{ stage: string; label: string; count: number }>;
   };
-  hubspotReference: { label: string; url: string } | null;
+  hubspotDashboard: { title: string; embedUrl: string; openUrl: string } | null;
 };
 
 export default function CsDashboardPage() {
@@ -103,7 +104,7 @@ export default function CsDashboardPage() {
     return <p className="text-red-600 text-sm">{error ?? 'Nessun dato'}</p>;
   }
 
-  const { owner, portfolio, renewals, pipeline, hubspotReference } = data;
+  const { owner, portfolio, renewals, pipeline, hubspotDashboard } = data;
   const r30 = renewals?.['30d'];
   const r14 = renewals?.['14d'];
   const chartRows = pipeline.byStage.filter(d => d.count > 0);
@@ -114,8 +115,8 @@ export default function CsDashboardPage() {
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Dashboard CS</h1>
           <p className="text-sm text-slate-600 mt-0.5">
-            Panoramica nativa del portfolio per <span className="font-medium text-slate-900">{owner.name}</span> (dati
-            dall’app, non embed HubSpot).
+            Portfolio di <span className="font-medium text-slate-900">{owner.name}</span>: report HubSpot in embed (se
+            configurato) e riepilogo dati dall’app sotto.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -131,19 +132,55 @@ export default function CsDashboardPage() {
           >
             Clienti CS <ArrowRight className="w-4 h-4" />
           </Link>
-          {hubspotReference && (
+          {hubspotDashboard && (
             <a
-              href={hubspotReference.url}
+              href={hubspotDashboard.openUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"
             >
-              {hubspotReference.label}
+              Apri dashboard in HubSpot
               <ExternalLink className="w-4 h-4" />
             </a>
           )}
         </div>
       </div>
+
+      {hubspotDashboard ? (
+        <Card padding="none" className="overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+            <div className="flex items-center gap-2 min-w-0">
+              <BarChart3 className="w-5 h-5 text-violet-600 shrink-0" />
+              <span className="font-medium text-slate-900 truncate">{hubspotDashboard.title}</span>
+            </div>
+            <a
+              href={hubspotDashboard.openUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-violet-600 hover:text-violet-800 shrink-0"
+            >
+              Apri in HubSpot <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+          <div className="aspect-[16/10] w-full min-h-[min(70vh,640px)] bg-slate-100">
+            <iframe
+              title={hubspotDashboard.title}
+              src={hubspotDashboard.embedUrl}
+              className="w-full h-full min-h-[min(70vh,640px)] border-0"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            />
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-4 border-dashed border-slate-200 bg-slate-50/80">
+          <p className="text-sm text-slate-600">
+            Nessuna dashboard HubSpot in embed per il tuo utente. Chiedi di aggiungere{' '}
+            <code className="text-xs bg-slate-100 px-1 rounded">CS_HUBSPOT_DASHBOARD_EMBED</code> in{' '}
+            <code className="text-xs bg-slate-100 px-1 rounded">cs-hubspot-dashboards.ts</code> con l’URL di
+            incorporamento da Reporting.
+          </p>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
@@ -252,8 +289,8 @@ export default function CsDashboardPage() {
       </div>
 
       <p className="text-xs text-slate-500">
-        I numeri derivano da clienti con company owner = te, sync HubSpot e stato pipeline CS in Postgres. Per metriche
-        presenti solo in Reporting HubSpot usa il link in alto se configurato.
+        I KPI sotto derivano da clienti con company owner = te e pipeline CS in Postgres. L’        iframe sopra usa la dashboard Reporting HubSpot configurata per il tuo owner id (se HubSpot blocca
+        l’embed, usa il link «Apri in HubSpot»).
       </p>
     </div>
   );
