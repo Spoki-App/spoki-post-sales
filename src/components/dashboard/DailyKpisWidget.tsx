@@ -47,7 +47,10 @@ export function DailyKpisWidget() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     dashboardDataApi.dailyKpis(token)
       .then(res => setData(res.data ?? null))

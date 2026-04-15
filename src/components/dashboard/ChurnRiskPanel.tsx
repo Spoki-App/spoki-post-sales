@@ -18,7 +18,10 @@ export function ChurnRiskPanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     dashboardDataApi.churnDetails(token)
       .then(res => {

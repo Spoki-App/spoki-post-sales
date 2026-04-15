@@ -77,7 +77,10 @@ export default function CsDashboardPage() {
   const [data, setData] = useState<CsDashboardData | null>(null);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     (async () => {
       setLoading(true);
       setError(null);

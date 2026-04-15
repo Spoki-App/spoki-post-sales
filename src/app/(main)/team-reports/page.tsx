@@ -50,7 +50,10 @@ export default function TeamReportsPage() {
   }, [user, isAdmin, router]);
 
   const load = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
