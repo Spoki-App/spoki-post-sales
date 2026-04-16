@@ -583,7 +583,28 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             <div className="ml-12 mt-1 mb-2 space-y-1">
                               {stepGoals.map(g => (
                                 <div key={g.id} className="flex items-center gap-2 text-xs">
-                                  <Target className={`w-3 h-3 shrink-0 ${g.status === 'achieved' ? 'text-emerald-500' : g.status === 'abandoned' ? 'text-slate-300' : 'text-blue-500'}`} />
+                                  <button
+                                    onClick={async () => {
+                                      if (!token) return;
+                                      const newStatus = g.status === 'achieved' ? 'active' : 'achieved';
+                                      await clientsApi.updateGoal(token, id, { goalId: g.id, status: newStatus });
+                                      const r = await clientsApi.getGoals(token, id);
+                                      setGoals(r.data ?? []);
+                                    }}
+                                    className="shrink-0"
+                                  >
+                                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                                      g.status === 'achieved'
+                                        ? 'bg-emerald-500 border-emerald-500'
+                                        : 'border-slate-300 hover:border-emerald-400'
+                                    }`}>
+                                      {g.status === 'achieved' && (
+                                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      )}
+                                    </div>
+                                  </button>
                                   <span className={g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-600'}>
                                     {g.title}
                                   </span>
@@ -592,12 +613,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                       {format(new Date(g.mentionedAt), 'd MMM yyyy', { locale: it })}
                                     </span>
                                   )}
-                                  <Badge
-                                    variant={g.status === 'achieved' ? 'success' : g.status === 'abandoned' ? 'default' : 'info'}
-                                    size="sm"
-                                  >
-                                    {g.status === 'active' ? 'Attivo' : g.status === 'achieved' ? 'Raggiunto' : 'Abbandonato'}
-                                  </Badge>
                                 </div>
                               ))}
                             </div>
@@ -762,18 +777,35 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       </div>
                     ) : (
                       <div className="flex items-start gap-3">
-                        <Target className={`w-4 h-4 mt-0.5 shrink-0 ${g.status === 'achieved' ? 'text-emerald-500' : g.status === 'abandoned' ? 'text-slate-300' : 'text-blue-500'}`} />
+                        <button
+                          onClick={async () => {
+                            if (!token) return;
+                            const newStatus = g.status === 'achieved' ? 'active' : 'achieved';
+                            await clientsApi.updateGoal(token, id, { goalId: g.id, status: newStatus });
+                            const r = await clientsApi.getGoals(token, id);
+                            setGoals(r.data ?? []);
+                          }}
+                          className="mt-0.5 shrink-0"
+                        >
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                            g.status === 'achieved'
+                              ? 'bg-emerald-500 border-emerald-500'
+                              : g.status === 'abandoned'
+                                ? 'border-slate-200 bg-slate-50'
+                                : 'border-slate-300 hover:border-emerald-400'
+                          }`}>
+                            {g.status === 'achieved' && (
+                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                        </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <p className={`text-sm font-medium ${g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-900'}`}>
                               {g.title}
                             </p>
-                            <Badge
-                              variant={g.status === 'achieved' ? 'success' : g.status === 'abandoned' ? 'default' : 'info'}
-                              size="sm"
-                            >
-                              {g.status === 'active' ? 'Attivo' : g.status === 'achieved' ? 'Raggiunto' : 'Abbandonato'}
-                            </Badge>
                             <Badge variant="default" size="sm">
                               {g.source === 'playbook' ? 'Playbook' : g.source === 'ai_extracted' ? 'AI' : 'Manuale'}
                             </Badge>
@@ -785,27 +817,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                           )}
                           {g.description && <p className="text-xs text-slate-500">{g.description}</p>}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => { setEditingGoalId(g.id); setEditTitle(g.title); setEditDesc(g.description ?? ''); }}
-                            className="p-1 text-xs text-slate-400 hover:text-slate-600"
-                          >
-                            Modifica
-                          </button>
-                          {g.status === 'active' && (
-                            <button
-                              onClick={async () => {
-                                if (!token) return;
-                                await clientsApi.updateGoal(token, id, { goalId: g.id, status: 'achieved' });
-                                const r = await clientsApi.getGoals(token, id);
-                                setGoals(r.data ?? []);
-                              }}
-                              className="p-1 text-xs text-emerald-600 hover:text-emerald-800"
-                            >
-                              Raggiunto
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          onClick={() => { setEditingGoalId(g.id); setEditTitle(g.title); setEditDesc(g.description ?? ''); }}
+                          className="p-1 text-xs text-slate-400 hover:text-slate-600 shrink-0"
+                        >
+                          Modifica
+                        </button>
                       </div>
                     )}
                   </li>
