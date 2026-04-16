@@ -536,13 +536,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       const nextDate = nextStep?.completedAt ? new Date(nextStep.completedAt) : null;
 
                       const stepGoals = stepDate
-                        ? goals.filter(g => {
-                            if (!g.mentionedAt) return false;
-                            const gDate = new Date(g.mentionedAt);
-                            if (gDate < stepDate) return false;
-                            if (nextDate && gDate >= nextDate) return false;
-                            return true;
-                          })
+                        ? goals
+                            .filter(g => {
+                              if (!g.mentionedAt) return false;
+                              const gDate = new Date(g.mentionedAt);
+                              if (gDate < stepDate) return false;
+                              if (nextDate && gDate >= nextDate) return false;
+                              return true;
+                            })
+                            .sort((a, b) => new Date(a.mentionedAt!).getTime() - new Date(b.mentionedAt!).getTime())
                         : [];
 
                       return (
@@ -585,6 +587,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                   <span className={g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-600'}>
                                     {g.title}
                                   </span>
+                                  {g.mentionedAt && (
+                                    <span className="text-slate-400">
+                                      {format(new Date(g.mentionedAt), 'd MMM yyyy', { locale: it })}
+                                    </span>
+                                  )}
                                   <Badge
                                     variant={g.status === 'achieved' ? 'success' : g.status === 'abandoned' ? 'default' : 'info'}
                                     size="sm"

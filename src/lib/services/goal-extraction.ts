@@ -17,18 +17,22 @@ interface EngagementRow {
   type: string;
   occurred_at: string;
   title: string | null;
-  body: string | null;
-  note_body: string | null;
+  content: string | null;
 }
 
 export async function extractGoalsForClient(clientId: string): Promise<number> {
   const engRes = await pgQuery<EngagementRow>(
-    `SELECT e.id, e.type, e.occurred_at, e.title,
-            ed.body, ed.note_body
-     FROM engagements e
-     LEFT JOIN engagement_details ed ON ed.engagement_id = e.id
-     WHERE e.client_id = $1
-     ORDER BY e.occurred_at DESC
+    `SELECT id, type, occurred_at, title,
+            COALESCE(
+              raw_properties->>'hs_note_body',
+              raw_properties->>'hs_call_body',
+              raw_properties->>'hs_email_text',
+              raw_properties->>'hs_meeting_body',
+              raw_properties->>'hs_body_preview'
+            ) AS content
+     FROM engagements
+     WHERE client_id = $1
+     ORDER BY occurred_at DESC
      LIMIT 80`,
     [clientId]
   );
@@ -44,7 +48,7 @@ export async function extractGoalsForClient(clientId: string): Promise<number> {
 
   engagements.forEach((e, i) => {
     const date = new Date(e.occurred_at).toISOString().slice(0, 10);
-    const content = e.note_body || e.body || e.title || '';
+    const content = e.content || e.title || '';
     if (!content.trim()) return;
 
     const hasStructuredFields = content.includes('##') || content.includes('**') || content.length > 500;
