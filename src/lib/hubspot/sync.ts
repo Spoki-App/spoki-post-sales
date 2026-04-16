@@ -10,6 +10,7 @@ import {
   type HSContact,
   type HSTicket,
   type HSEngagement,
+  type HSDeal,
   type MrrEnrichmentStats,
 } from './client';
 import { getLogger } from '@/lib/logger';
@@ -65,6 +66,7 @@ export interface SyncResult {
   contacts: number;
   tickets: number;
   engagements: number;
+  deals: number;
   errors: string[];
   durationMs: number;
   mrrEnrichment?: MrrEnrichmentStats;
@@ -384,6 +386,67 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
   return count;
 }
 
+// ─── Deals ───────────────────────────────────────────────────────────────────
+
+async function syncDeals(deals: HSDeal[]): Promise<number> {
+  if (deals.length === 0) return 0;
+
+  const companyHubspotIds = [...new Set(deals.map(d => d.companyHubspotId))];
+  const clientMap: Record<string, string> = {};
+
+  if (companyHubspotIds.length > 0) {
+    const res = await pgQuery<{ hubspot_id: string; id: string }>(
+      `SELECT hubspot_id, id FROM clients WHERE hubspot_id = ANY($1::text[])`,
+      [companyHubspotIds]
+    );
+    for (const row of res.rows) clientMap[row.hubspot_id] = row.id;
+  }
+
+  const CHUNK = 200;
+  let count = 0;
+
+  for (let i = 0; i < deals.length; i += CHUNK) {
+    const chunk = deals.slice(i, i + CHUNK);
+
+    await pgQuery(
+      `INSERT INTO deals (
+        hubspot_id, client_id, pipeline_id, stage_id, deal_name,
+        amount, close_date, owner_id, stage_entered_at, updated_at
+      )
+      SELECT * FROM UNNEST(
+        $1::text[], $2::uuid[], $3::text[], $4::text[], $5::text[],
+        $6::numeric[], $7::date[], $8::text[], $9::timestamptz[], $10::timestamptz[]
+      ) AS t(hubspot_id, client_id, pipeline_id, stage_id, deal_name,
+             amount, close_date, owner_id, stage_entered_at, updated_at)
+      ON CONFLICT (hubspot_id) DO UPDATE SET
+        client_id        = EXCLUDED.client_id,
+        pipeline_id      = EXCLUDED.pipeline_id,
+        stage_id         = EXCLUDED.stage_id,
+        deal_name        = EXCLUDED.deal_name,
+        amount           = EXCLUDED.amount,
+        close_date       = EXCLUDED.close_date,
+        owner_id         = EXCLUDED.owner_id,
+        stage_entered_at = EXCLUDED.stage_entered_at,
+        updated_at       = NOW()`,
+      [
+        chunk.map(d => d.id),
+        chunk.map(d => clientMap[d.companyHubspotId] ?? null),
+        chunk.map(d => d.pipelineId),
+        chunk.map(d => d.stageId),
+        chunk.map(d => d.dealName),
+        chunk.map(d => d.amount),
+        chunk.map(d => d.closeDate ? new Date(d.closeDate) : null),
+        chunk.map(d => d.ownerId),
+        chunk.map(d => d.stageEnteredAt ? new Date(d.stageEnteredAt) : null),
+        chunk.map(() => new Date()),
+      ]
+    );
+    count += chunk.length;
+  }
+
+  return count;
+}
+
 // ─── Update onboarding stage from tickets ────────────────────────────────────
 
 async function updateOnboardingStages(): Promise<number> {
@@ -430,7 +493,7 @@ export async function syncTicketsOnly(tickets: HSTicket[]): Promise<number> {
 export async function runFullSync(): Promise<SyncResult> {
   const start = Date.now();
   const errors: string[] = [];
-  const result: SyncResult = { companies: 0, contacts: 0, tickets: 0, engagements: 0, errors, durationMs: 0 };
+  const result: SyncResult = { companies: 0, contacts: 0, tickets: 0, engagements: 0, deals: 0, errors, durationMs: 0 };
 
   const client = getHubSpotClient();
 
@@ -484,12 +547,25 @@ export async function runFullSync(): Promise<SyncResult> {
       errors.push(`engagements: ${String(engagements.reason)}`);
     }
 
+    // Sync deals from tracked pipelines (Sales + Upselling)
+    if (companies.status === 'fulfilled') {
+      try {
+        const companyIds = companies.value.map(c => c.id);
+        const hsDeals = await client.fetchDealsForCompanies(companyIds);
+        result.deals = await syncDeals(hsDeals);
+        logger.info(`Synced ${result.deals} deals`);
+      } catch (err) {
+        errors.push(`deals: ${String(err)}`);
+        logger.error('Failed to sync deals', { error: String(err) });
+      }
+    }
+
   } catch (err) {
     errors.push(`sync: ${String(err)}`);
     logger.error('Sync failed', { error: String(err) });
   }
 
   result.durationMs = Date.now() - start;
-  logger.info('HubSpot sync complete', { companies: result.companies, contacts: result.contacts, tickets: result.tickets, engagements: result.engagements, durationMs: result.durationMs });
+  logger.info('HubSpot sync complete', { companies: result.companies, contacts: result.contacts, tickets: result.tickets, engagements: result.engagements, deals: result.deals, durationMs: result.durationMs });
   return result;
 }

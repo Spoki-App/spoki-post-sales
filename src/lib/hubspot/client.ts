@@ -138,6 +138,18 @@ export interface HSEngagement {
   rawProperties: Record<string, unknown>;
 }
 
+export interface HSDeal {
+  id: string;
+  companyHubspotId: string;
+  pipelineId: string;
+  stageId: string;
+  dealName: string | null;
+  amount: number | null;
+  closeDate: string | null;
+  ownerId: string | null;
+  stageEnteredAt: string | null;
+}
+
 class HubSpotClient {
   private http: AxiosInstance;
 
@@ -1001,6 +1013,112 @@ class HubSpotClient {
 
     logger.info(`Found purchase sources for ${Object.keys(result).length} companies`);
     return result;
+  }
+
+  async fetchDealsForCompanies(companyHubspotIds: string[]): Promise<HSDeal[]> {
+    if (companyHubspotIds.length === 0) return [];
+
+    const { TRACKED_PIPELINE_IDS, DEAL_PIPELINES } = await import('@/lib/config/deal-pipelines');
+
+    const BATCH = 100;
+    const companyToDealIds = new Map<string, string[]>();
+
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ from?: { id?: string }; to?: Array<{ toObjectId: string | number }> }>;
+        };
+        for (const row of results ?? []) {
+          const cid = row.from?.id;
+          if (!cid) continue;
+          const ids = (row.to ?? []).map(t => String(t.toObjectId));
+          if (ids.length > 0) {
+            const prev = companyToDealIds.get(cid) ?? [];
+            companyToDealIds.set(cid, [...new Set([...prev, ...ids])]);
+          }
+        }
+      } catch (err) {
+        const { message } = hubspotErrMeta(err);
+        logger.warn('Deal associations batch failed', { message });
+      }
+    }
+
+    const allDealIds = [...new Set([...companyToDealIds.values()].flat())];
+    if (allDealIds.length === 0) return [];
+
+    logger.info(`Fetching ${allDealIds.length} deals for pipeline sync`);
+
+    const dealProps = ['dealname', 'amount', 'pipeline', 'dealstage', 'closedate', 'hubspot_owner_id'];
+
+    const allStageIds = TRACKED_PIPELINE_IDS.flatMap(pid =>
+      Object.keys(DEAL_PIPELINES[pid].stages)
+    );
+    const dateEnteredProps = allStageIds.map(sid => `hs_date_entered_${sid}`);
+    const propsToFetch = [...dealProps, ...dateEnteredProps];
+
+    const dealById = new Map<string, Record<string, string | null>>();
+
+    for (let i = 0; i < allDealIds.length; i += BATCH) {
+      const batch = allDealIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: { properties: propsToFetch, inputs: batch.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ id: string; properties: Record<string, string | null> }>;
+        };
+        for (const r of results ?? []) {
+          dealById.set(r.id, r.properties);
+        }
+      } catch (err) {
+        const { message } = hubspotErrMeta(err);
+        logger.warn('Deal batch/read failed', { message });
+      }
+    }
+
+    const dealIdToCompany = new Map<string, string>();
+    for (const [companyId, dids] of companyToDealIds) {
+      for (const did of dids) dealIdToCompany.set(did, companyId);
+    }
+
+    const results: HSDeal[] = [];
+    const trackedSet = new Set<string>(TRACKED_PIPELINE_IDS as unknown as string[]);
+
+    for (const [dealId, props] of dealById) {
+      const pipelineId = props.pipeline ?? '';
+      if (!trackedSet.has(pipelineId)) continue;
+
+      const stageId = props.dealstage ?? '';
+      const companyHubspotId = dealIdToCompany.get(dealId);
+      if (!companyHubspotId) continue;
+
+      const dateEnteredKey = `hs_date_entered_${stageId}`;
+      const stageEnteredAt = props[dateEnteredKey] ?? null;
+
+      const amtStr = props.amount;
+      const amount = amtStr ? parseFloat(amtStr) : null;
+
+      results.push({
+        id: dealId,
+        companyHubspotId,
+        pipelineId,
+        stageId,
+        dealName: props.dealname ?? null,
+        amount: amount && Number.isFinite(amount) ? Math.round(amount * 100) / 100 : null,
+        closeDate: props.closedate ?? null,
+        ownerId: props.hubspot_owner_id ?? null,
+        stageEnteredAt,
+      });
+    }
+
+    logger.info(`Found ${results.length} deals in tracked pipelines`);
+    return results;
   }
 
   async createNoteOnCompany(companyHubspotId: string, body: string): Promise<string> {

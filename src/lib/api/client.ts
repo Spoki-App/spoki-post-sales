@@ -2,7 +2,7 @@
  * Typed API client for frontend → Next.js API routes communication.
  */
 
-import type { Client, ClientWithHealth, ClientGoal, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
+import type { Client, ClientWithHealth, ClientGoal, ClientDeal, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
 
@@ -87,6 +87,8 @@ export const clientsApi = {
     fetchApi<ApiResponse<{ extracted: number }>>(`/clients/${id}/goals/extract`, { method: 'POST', token }),
   syncGoalsToHubspot: (token: string, id: string) =>
     fetchApi<ApiResponse<{ noteId: string; goalsCount: number }>>(`/clients/${id}/goals/sync-hubspot`, { method: 'POST', token }),
+  getDeals: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ sales: ClientDeal[]; upselling: ClientDeal[] }>>(`/clients/${id}/deals`, { token }),
 };
 
 // ─── Customer Success ──────────────────────────────────────────────────────────

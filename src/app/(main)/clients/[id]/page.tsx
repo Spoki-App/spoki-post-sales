@@ -17,7 +17,8 @@ import { QbrModal } from '@/components/ui/QbrModal';
 import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation, Target } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Client, ClientGoal, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
+import type { Client, ClientGoal, ClientDeal, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
+import { TrendingUp, DollarSign } from 'lucide-react';
 import { formatMrrDisplay } from '@/lib/format/mrr';
 import { MrrTrendChart } from '@/components/dashboard/MrrTrendChart';
 import { PaymentStatusCard } from '@/components/dashboard/PaymentStatusCard';
@@ -102,12 +103,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [goalsLoaded, setGoalsLoaded] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [goalsError, setGoalsError] = useState<string | null>(null);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalDesc, setNewGoalDesc] = useState('');
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [salesDeals, setSalesDeals] = useState<ClientDeal[]>([]);
+  const [upsellingDeals, setUpsellingDeals] = useState<ClientDeal[]>([]);
+  const [dealTab, setDealTab] = useState<'sales' | 'upselling'>('sales');
 
   const loadAccountBrief = useCallback(async () => {
     if (!token || !id) return;
@@ -134,6 +139,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setLoading(false);
       }
     })();
+    clientsApi.getDeals(token, id).then(r => {
+      if (r.data) {
+        setSalesDeals(r.data.sales);
+        setUpsellingDeals(r.data.upselling);
+      }
+    }).catch(() => {});
   }, [token, id]);
 
   useEffect(() => {
@@ -309,6 +320,77 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </p>
         </Card>
       </div>
+
+      {/* Deal Pipelines */}
+      {(salesDeals.length > 0 || upsellingDeals.length > 0) && (
+        <Card className="mb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setDealTab('sales')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dealTab === 'sales' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <span className="inline-flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5" />Sales Pipeline ({salesDeals.length})</span>
+              </button>
+              <button
+                onClick={() => setDealTab('upselling')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dealTab === 'upselling' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <span className="inline-flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" />Upselling ({upsellingDeals.length})</span>
+              </button>
+            </div>
+          </div>
+          {(dealTab === 'sales' ? salesDeals : upsellingDeals).length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">Nessun deal in questa pipeline.</p>
+          ) : (
+            <div className="space-y-3">
+              {(dealTab === 'sales' ? salesDeals : upsellingDeals).map(d => {
+                const progress = d.totalStages > 1 ? Math.round(((d.stageOrder) / (d.totalStages - 1)) * 100) : 0;
+                const barColor = d.isWon ? 'bg-emerald-500' : d.isClosed ? 'bg-red-400' : 'bg-blue-500';
+                return (
+                  <div key={d.id} className="border border-slate-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">{d.dealName ?? 'Deal senza nome'}</p>
+                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${
+                            d.isWon ? 'bg-emerald-100 text-emerald-700'
+                            : d.isClosed ? 'bg-red-100 text-red-700'
+                            : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {d.stageLabel}
+                          </span>
+                          {d.daysInStage != null && !d.isClosed && (
+                            <span className="text-xs text-slate-400">{d.daysInStage} gg nello stage</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {d.amount != null && (
+                          <p className="text-sm font-semibold text-slate-900">
+                            {d.amount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                          </p>
+                        )}
+                        {d.closeDate && (
+                          <p className="text-xs text-slate-400">
+                            Chiusura: {format(new Date(d.closeDate), 'd MMM yyyy', { locale: it })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-1.5">
+                      <div className={`${barColor} h-1.5 rounded-full transition-all`} style={{ width: `${d.isClosed ? 100 : progress}%` }} />
+                    </div>
+                    {d.ownerName && (
+                      <p className="text-xs text-slate-400 mt-1.5">Owner: {d.ownerName}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* AI Analysis */}
       {aiAnalysis && (
@@ -653,12 +735,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               onClick={async () => {
                 if (!token || extracting) return;
                 setExtracting(true);
+                setGoalsError(null);
                 try {
                   await clientsApi.extractGoals(token, id);
                   const r = await clientsApi.getGoals(token, id);
                   setGoals(r.data ?? []);
-                } catch { /* ignore */ }
-                finally { setExtracting(false); }
+                } catch (err) {
+                  setGoalsError(err instanceof Error ? err.message : 'Estrazione fallita. Riprova.');
+                } finally { setExtracting(false); }
               }}
               disabled={extracting}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
@@ -677,7 +761,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 onClick={async () => {
                   if (!token || syncing) return;
                   setSyncing(true);
-                  try { await clientsApi.syncGoalsToHubspot(token, id); } catch { /* ignore */ }
+                  setGoalsError(null);
+                  try { await clientsApi.syncGoalsToHubspot(token, id); }
+                  catch (err) { setGoalsError(err instanceof Error ? err.message : 'Sincronizzazione fallita. Riprova.'); }
                   finally { setSyncing(false); }
                 }}
                 disabled={syncing}
@@ -688,6 +774,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </button>
             )}
           </div>
+
+          {goalsError && (
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm rounded-lg bg-red-50 text-red-700 border border-red-200">
+              <span>{goalsError}</span>
+              <button onClick={() => setGoalsError(null)} className="shrink-0 text-red-400 hover:text-red-600">&times;</button>
+            </div>
+          )}
 
           {showAddGoal && (
             <Card>

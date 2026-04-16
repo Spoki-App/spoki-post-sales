@@ -61,6 +61,11 @@ export async function extractGoalsForClient(clientId: string): Promise<number> {
     }
   });
 
+  if (playbooks.length === 0 && otherEngagements.length === 0) {
+    logger.info('No usable engagement content for client', { clientId });
+    return 0;
+  }
+
   const prompt = `You are a Customer Success analyst at Spoki. Analyze the following engagement data for a client and extract concrete OBJECTIVES / GOALS that were agreed upon, discussed, or implied during interactions.
 
 === STRUCTURED PLAYBOOK NOTES ===
@@ -105,13 +110,18 @@ Rules:
 
     const source = goal.fromPlaybook ? 'playbook' : 'ai_extracted';
 
-    await pgQuery(
+    const res = await pgQuery<{ id: string }>(
       `INSERT INTO client_goals (client_id, title, description, status, source, source_engagement_id, mentioned_at, created_by)
        VALUES ($1, $2, $3, 'active', $4, $5, $6, 'ai')
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (client_id, title) DO UPDATE SET
+         description = EXCLUDED.description,
+         source = EXCLUDED.source,
+         source_engagement_id = EXCLUDED.source_engagement_id,
+         mentioned_at = EXCLUDED.mentioned_at
+       RETURNING id`,
       [clientId, goal.title.slice(0, 200), goal.description || null, source, engagementId, goal.mentionedAt || null]
     );
-    inserted++;
+    if (res.rows.length > 0) inserted++;
   }
 
   logger.info('Goals extracted and inserted', { clientId, total: parsed.length, inserted });
