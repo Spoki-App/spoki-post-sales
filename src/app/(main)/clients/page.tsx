@@ -191,7 +191,7 @@ export default function ClientsPage() {
     try {
       const params: Parameters<typeof clientsApi.list>[1] = {
         page, q, sort: sortBy, dir: sortDir,
-        ...(isAdmin || !hasOwnerProfile ? { viewAll: true } : {}),
+        ...(isAdmin || !hasOwnerProfile || selectedOwner ? { viewAll: true } : {}),
         ...(selectedOwner ? { owner: selectedOwner } : {}),
       };
       const res = await clientsApi.list(token, params, controller.signal);

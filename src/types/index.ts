@@ -97,6 +97,7 @@ export interface Engagement {
   occurredAt: string;
   ownerId: string | null;
   title: string | null;
+  noteCategory: string | null;
 }
 
 // ─── Task ─────────────────────────────────────────────────────────────────────

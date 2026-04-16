@@ -21,6 +21,13 @@ interface EngagementRow {
 }
 
 export async function extractGoalsForClient(clientId: string): Promise<number> {
+  const existingGoalsRes = await pgQuery<{ id: string; title: string; source: string }>(
+    `SELECT id, title, source FROM client_goals WHERE client_id = $1`,
+    [clientId]
+  );
+  const manualGoals = existingGoalsRes.rows.filter(g => g.source === 'manual');
+  const aiGoalIds = existingGoalsRes.rows.filter(g => g.source !== 'manual').map(g => g.id);
+
   const engRes = await pgQuery<EngagementRow>(
     `SELECT id, type, occurred_at, title,
             COALESCE(
@@ -66,6 +73,12 @@ export async function extractGoalsForClient(clientId: string): Promise<number> {
     return 0;
   }
 
+  const manualGoalsList = manualGoals.length > 0
+    ? manualGoals.map(g => `- "${g.title}"`).join('\n')
+    : '(none)';
+
+  const maxNewGoals = Math.max(0, 5 - manualGoals.length);
+
   const prompt = `You are a Customer Success analyst at Spoki. Analyze the following engagement data for a client and extract concrete OBJECTIVES / GOALS that were agreed upon, discussed, or implied during interactions.
 
 === STRUCTURED PLAYBOOK NOTES ===
@@ -74,13 +87,18 @@ ${playbooks.length > 0 ? playbooks.join('\n\n---\n\n') : '(none)'}
 === OTHER ENGAGEMENTS (calls, emails, meetings) ===
 ${otherEngagements.length > 0 ? otherEngagements.join('\n\n---\n\n') : '(none)'}
 
+=== EXISTING MANUAL GOALS (do NOT duplicate these) ===
+${manualGoalsList}
+
 Reply ONLY with valid JSON (no markdown, no backticks):
 [
   {"title": "short goal title (max 80 chars)", "description": "1-2 sentence description of the goal and context", "mentionedAt": "YYYY-MM-DD", "fromPlaybook": true/false, "engagementIndex": N or null}
 ]
 
 Rules:
-- Extract 3-10 goals maximum, focusing on the most concrete and actionable ones.
+- Extract up to ${maxNewGoals} goals maximum. If there are already 5 or more manual goals, return [].
+- Each goal must be clearly distinct from all others. Do NOT create similar or overlapping goals.
+- Do NOT duplicate or rephrase any of the existing manual goals listed above.
 - Goals should be things like: feature adoption targets, usage milestones, onboarding checkpoints, integration goals, training objectives, campaign launch targets.
 - Do NOT extract generic platitudes like "improve customer satisfaction".
 - mentionedAt is the date (YYYY-MM-DD) when this goal was first discussed or agreed upon, taken from the engagement timeline dates. Use the earliest date where this goal appears.
@@ -95,9 +113,18 @@ Rules:
   try {
     parsed = JSON.parse(rawJson);
     if (!Array.isArray(parsed)) parsed = [];
+    parsed = parsed.slice(0, maxNewGoals);
   } catch {
     logger.error('Failed to parse AI response', { rawJson: rawJson.slice(0, 500) });
     return 0;
+  }
+
+  if (aiGoalIds.length > 0) {
+    await pgQuery(
+      `DELETE FROM client_goals WHERE id = ANY($1::uuid[])`,
+      [aiGoalIds]
+    );
+    logger.info('Removed old AI goals before re-extraction', { clientId, removed: aiGoalIds.length });
   }
 
   let inserted = 0;

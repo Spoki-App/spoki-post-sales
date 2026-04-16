@@ -42,6 +42,18 @@ const ENGAGEMENT_RAW_TRUNCATE = new Set([
   'hs_call_body', 'hs_meeting_body', 'hs_internal_meeting_notes',
 ]);
 
+/** Serialize to JSON safe for PostgreSQL JSONB (strips null bytes, control chars, lone surrogates). */
+function safeJsonb(obj: unknown): string {
+  try {
+    let json = JSON.stringify(obj);
+    // eslint-disable-next-line no-control-regex
+    json = json.replace(/\u0000/g, '').replace(/\\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+    return json;
+  } catch {
+    return '{}';
+  }
+}
+
 function pickKeys(obj: Record<string, unknown> | undefined | null, allowed: Set<string>, truncateKeys?: Set<string>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!obj) return out;
@@ -295,7 +307,7 @@ async function syncTickets(tickets: HSTicket[]): Promise<number> {
         chunk.map(t => t.closedAt ? new Date(t.closedAt) : null),
         chunk.map(t => t.lastModifiedAt ? new Date(t.lastModifiedAt) : null),
         chunk.map(t => t.activatedAt ? new Date(Number(t.activatedAt) > 1e12 ? Number(t.activatedAt) : t.activatedAt) : null),
-        chunk.map(t => JSON.stringify(pickKeys(t.rawProperties, TICKET_RAW_KEEP))),
+        chunk.map(t => safeJsonb(pickKeys(t.rawProperties, TICKET_RAW_KEEP))),
         chunk.map(() => new Date()),
       ]
     );
@@ -342,45 +354,47 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
   for (let i = 0; i < engagements.length; i += CHUNK) {
     const chunk = engagements.slice(i, i + CHUNK);
 
-    await pgQuery(
-      `INSERT INTO engagements (
-        hubspot_id, client_id, contact_id, type, occurred_at,
-        owner_id, title, raw_properties, last_synced_at
-      )
-      SELECT * FROM UNNEST(
-        $1::text[], $2::uuid[], $3::uuid[], $4::text[], $5::timestamptz[],
-        $6::text[], $7::text[], $8::jsonb[], $9::timestamptz[]
-      ) AS t(hubspot_id, client_id, contact_id, type, occurred_at,
-             owner_id, title, raw_properties, last_synced_at)
-      ON CONFLICT (hubspot_id) DO UPDATE SET
-        client_id      = EXCLUDED.client_id,
-        contact_id     = EXCLUDED.contact_id,
-        type           = EXCLUDED.type,
-        occurred_at    = EXCLUDED.occurred_at,
-        owner_id       = EXCLUDED.owner_id,
-        title          = EXCLUDED.title,
-        raw_properties = EXCLUDED.raw_properties,
-        last_synced_at = NOW()`,
-      [
-        chunk.map(e => e.id),
-        chunk.map(e => {
-          if (e.companyId && clientMap[e.companyId]) return clientMap[e.companyId];
-          if (e.contactId && contactHubToClientId[e.contactId]) return contactHubToClientId[e.contactId];
-          return null;
-        }),
-        chunk.map(e => (e.contactId ? contactMap[e.contactId] ?? null : null)),
-        chunk.map(e => e.type),
-        chunk.map(e => new Date(e.occurredAt)),
-        chunk.map(e => e.ownerId),
-        chunk.map(e => e.title ? e.title.replace(/\u0000/g, '') : e.title),
-        chunk.map(e => {
-          const json = JSON.stringify(pickKeys(e.rawProperties, ENGAGEMENT_RAW_KEEP, ENGAGEMENT_RAW_TRUNCATE));
-          return json.replace(/\\u0000/g, '');
-        }),
-        chunk.map(() => new Date()),
-      ]
-    );
-    count += chunk.length;
+    try {
+      await pgQuery(
+        `INSERT INTO engagements (
+          hubspot_id, client_id, contact_id, type, occurred_at,
+          owner_id, title, raw_properties, last_synced_at
+        )
+        SELECT * FROM UNNEST(
+          $1::text[], $2::uuid[], $3::uuid[], $4::text[], $5::timestamptz[],
+          $6::text[], $7::text[], $8::jsonb[], $9::timestamptz[]
+        ) AS t(hubspot_id, client_id, contact_id, type, occurred_at,
+               owner_id, title, raw_properties, last_synced_at)
+        ON CONFLICT (hubspot_id) DO UPDATE SET
+          client_id      = EXCLUDED.client_id,
+          contact_id     = EXCLUDED.contact_id,
+          type           = EXCLUDED.type,
+          occurred_at    = EXCLUDED.occurred_at,
+          owner_id       = EXCLUDED.owner_id,
+          title          = EXCLUDED.title,
+          raw_properties = EXCLUDED.raw_properties,
+          last_synced_at = NOW()`,
+        [
+          chunk.map(e => e.id),
+          chunk.map(e => {
+            if (e.companyId && clientMap[e.companyId]) return clientMap[e.companyId];
+            if (e.contactId && contactHubToClientId[e.contactId]) return contactHubToClientId[e.contactId];
+            return null;
+          }),
+          chunk.map(e => (e.contactId ? contactMap[e.contactId] ?? null : null)),
+          chunk.map(e => e.type),
+          chunk.map(e => new Date(e.occurredAt)),
+          chunk.map(e => e.ownerId),
+          // eslint-disable-next-line no-control-regex
+          chunk.map(e => e.title ? e.title.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') : e.title),
+          chunk.map(e => safeJsonb(pickKeys(e.rawProperties, ENGAGEMENT_RAW_KEEP, ENGAGEMENT_RAW_TRUNCATE))),
+          chunk.map(() => new Date()),
+        ]
+      );
+      count += chunk.length;
+    } catch (err) {
+      logger.error('Engagement chunk failed, skipping', { offset: i, size: chunk.length, error: String(err) });
+    }
   }
 
   return count;
@@ -481,6 +495,7 @@ async function updateOnboardingStages(): Promise<number> {
 export const syncCompaniesOnly = syncCompanies;
 export const syncContactsOnly = syncContacts;
 export const syncEngagementsOnly = syncEngagements;
+export const syncDealsOnly = syncDeals;
 
 export async function syncTicketsOnly(tickets: HSTicket[]): Promise<number> {
   const count = await syncTickets(tickets);
