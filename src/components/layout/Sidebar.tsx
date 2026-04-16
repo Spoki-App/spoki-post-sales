@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
@@ -16,7 +16,6 @@ import {
   BarChart3,
   LogOut,
   ChevronDown,
-  Building2,
   GraduationCap,
   HeartHandshake,
   Database,
@@ -24,18 +23,10 @@ import {
   Phone,
 } from 'lucide-react';
 
-const CLIENT_SECTIONS = [
-  { href: '/clients?section=company', label: 'Company Owner', icon: Building2, section: 'company' },
-  { href: '/clients?section=onboarding', label: 'Onboarding Owner', icon: GraduationCap, section: 'onboarding' },
-];
-
 export function Sidebar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const currentSection = searchParams.get('section') ?? '';
   const { user, signOut: clearAuth } = useAuthStore();
   const isAdmin = isAdminEmail(user?.email ?? '');
-  const isOwner = !!getOwnerByEmail(user?.email ?? '') && !isAdmin;
   const isCs = isCustomerSuccessTeamMember(getOwnerByEmail(user?.email ?? ''));
 
   async function handleSignOut() {
@@ -70,44 +61,34 @@ export function Sidebar() {
           Dashboard
         </Link>
 
-        {/* Clienti — due sottovoci (company / onboarding), vista flat per manager */}
-        {isOwner ? (
-          <div>
-            <div className="flex items-center gap-3 px-3 py-2 text-sm text-emerald-400">
-              <Users className="w-4 h-4 shrink-0" />
-              <span>Clienti</span>
-            </div>
-            <div className="ml-4 space-y-0.5">
-              {CLIENT_SECTIONS.map(({ href, label, icon: Icon, section }) => {
-                const active = pathname === '/clients' && currentSection === section;
-                return (
-                  <Link
-                    key={section}
-                    href={href}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                      active ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
-                    )}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    {label}
-                  </Link>
-                );
-              })}
-            </div>
+        {/* Onboarding Hub */}
+        <div>
+          <div className="flex items-center gap-3 px-3 py-2 text-sm text-emerald-400">
+            <GraduationCap className="w-4 h-4 shrink-0" />
+            <span>Onboarding</span>
           </div>
-        ) : (
-          <Link
-            href="/clients"
-            className={cn(
-              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-              pathname.startsWith('/clients') ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
-            )}
-          >
-            <Users className="w-4 h-4 shrink-0" />
-            Clienti
-          </Link>
-        )}
+          <div className="ml-4 space-y-0.5">
+            {[
+              { href: '/onboarding-hub/dashboard', label: 'Dashboard' },
+              { href: '/onboarding-hub/pipeline', label: 'Pipeline' },
+              { href: '/onboarding-hub/clients', label: 'Portfolio Clienti' },
+            ].map(({ href, label }) => {
+              const active = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    active ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
+                  )}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
 
         {isCs && (
           <div>

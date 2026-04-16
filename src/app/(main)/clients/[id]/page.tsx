@@ -14,10 +14,10 @@ import { getOwnerName } from '@/lib/config/owners';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
 import { EmailGeneratorModal } from '@/components/ui/EmailGeneratorModal';
 import { QbrModal } from '@/components/ui/QbrModal';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation } from 'lucide-react';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation, Target } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Client, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
+import type { Client, ClientGoal, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
 import { formatMrrDisplay } from '@/lib/format/mrr';
 import { MrrTrendChart } from '@/components/dashboard/MrrTrendChart';
 import { PaymentStatusCard } from '@/components/dashboard/PaymentStatusCard';
@@ -30,12 +30,13 @@ type ClientWithStage = Client & {
   onboardingStageType?: string | null;
 };
 
-type Tab = 'activities' | 'tickets' | 'onboarding' | 'tasks' | 'contacts' | 'financials';
+type Tab = 'activities' | 'tickets' | 'onboarding' | 'goals' | 'tasks' | 'contacts' | 'financials';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'activities', label: 'Attività' },
   { id: 'tickets', label: 'Ticket' },
   { id: 'onboarding', label: 'Onboarding' },
+  { id: 'goals', label: 'Obiettivi' },
   { id: 'tasks', label: 'Task' },
   { id: 'contacts', label: 'Contatti' },
   { id: 'financials', label: 'Dati Finanziari' },
@@ -97,6 +98,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [accountBrief, setAccountBrief] = useState<AccountBriefPayload | null>(null);
   const [accountBriefLoading, setAccountBriefLoading] = useState(false);
   const [accountBriefError, setAccountBriefError] = useState<string | null>(null);
+  const [goals, setGoals] = useState<ClientGoal[]>([]);
+  const [goalsLoaded, setGoalsLoaded] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalDesc, setNewGoalDesc] = useState('');
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
 
   const loadAccountBrief = useCallback(async () => {
     if (!token || !id) return;
@@ -157,6 +168,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     }
     if (tab === 'onboarding' && !onboarding) {
       onboardingApi.getProgress(token, id).then(r => setOnboarding(r.data ?? null));
+    }
+    if ((tab === 'goals' || tab === 'onboarding') && !goalsLoaded) {
+      clientsApi.getGoals(token, id).then(r => { setGoals(r.data ?? []); setGoalsLoaded(true); });
     }
   }, [tab, token, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -516,35 +530,70 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     {onboardingHistory.steps.map((step, i) => {
                       const done = !!step.completedAt;
                       const isCurrent = step.id === onboardingHistory.currentStageId;
+
+                      const stepDate = step.completedAt ? new Date(step.completedAt) : null;
+                      const nextStep = onboardingHistory.steps[i + 1];
+                      const nextDate = nextStep?.completedAt ? new Date(nextStep.completedAt) : null;
+
+                      const stepGoals = stepDate
+                        ? goals.filter(g => {
+                            if (!g.mentionedAt) return false;
+                            const gDate = new Date(g.mentionedAt);
+                            if (gDate < stepDate) return false;
+                            if (nextDate && gDate >= nextDate) return false;
+                            return true;
+                          })
+                        : [];
+
                       return (
-                        <li key={step.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-emerald-50' : ''}`}>
-                          <div className="flex items-center justify-center w-6">
-                            {done ? (
-                              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
-                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </div>
-                            ) : isCurrent ? (
-                              <div className="w-5 h-5 rounded-full border-2 border-emerald-500 bg-emerald-500 flex items-center justify-center">
-                                <div className="w-2 h-2 rounded-full bg-white" />
-                              </div>
-                            ) : (
-                              <div className="w-5 h-5 rounded-full border-2 border-slate-200" />
-                            )}
-                            {i < onboardingHistory.steps.length - 1 && (
-                              <div className={`absolute ml-[9px] mt-10 w-0.5 h-4 ${done ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+                        <li key={step.id}>
+                          <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-emerald-50' : ''}`}>
+                            <div className="flex items-center justify-center w-6">
+                              {done ? (
+                                <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : isCurrent ? (
+                                <div className="w-5 h-5 rounded-full border-2 border-emerald-500 bg-emerald-500 flex items-center justify-center">
+                                  <div className="w-2 h-2 rounded-full bg-white" />
+                                </div>
+                              ) : (
+                                <div className="w-5 h-5 rounded-full border-2 border-slate-200" />
+                              )}
+                              {i < onboardingHistory.steps.length - 1 && (
+                                <div className={`absolute ml-[9px] mt-10 w-0.5 h-4 ${done ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
+                                {step.label}
+                              </p>
+                            </div>
+                            {step.completedAt && (
+                              <p className="text-xs text-slate-400 shrink-0">
+                                {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
+                              </p>
                             )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                              {step.label}
-                            </p>
-                          </div>
-                          {step.completedAt && (
-                            <p className="text-xs text-slate-400 shrink-0">
-                              {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
-                            </p>
+                          {stepGoals.length > 0 && (
+                            <div className="ml-12 mt-1 mb-2 space-y-1">
+                              {stepGoals.map(g => (
+                                <div key={g.id} className="flex items-center gap-2 text-xs">
+                                  <Target className={`w-3 h-3 shrink-0 ${g.status === 'achieved' ? 'text-emerald-500' : g.status === 'abandoned' ? 'text-slate-300' : 'text-blue-500'}`} />
+                                  <span className={g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-600'}>
+                                    {g.title}
+                                  </span>
+                                  <Badge
+                                    variant={g.status === 'achieved' ? 'success' : g.status === 'abandoned' ? 'default' : 'info'}
+                                    size="sm"
+                                  >
+                                    {g.status === 'active' ? 'Attivo' : g.status === 'achieved' ? 'Raggiunto' : 'Abbandonato'}
+                                  </Badge>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </li>
                       );
@@ -567,6 +616,191 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     <span className="text-xs text-slate-400">
                       {format(new Date(issue.occurredAt), 'd MMM yyyy', { locale: it })}
                     </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {tab === 'goals' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={async () => {
+                if (!token || extracting) return;
+                setExtracting(true);
+                try {
+                  await clientsApi.extractGoals(token, id);
+                  const r = await clientsApi.getGoals(token, id);
+                  setGoals(r.data ?? []);
+                } catch { /* ignore */ }
+                finally { setExtracting(false); }
+              }}
+              disabled={extracting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
+            >
+              {extracting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Estrai da HubSpot
+            </button>
+            <button
+              onClick={() => setShowAddGoal(!showAddGoal)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+            >
+              + Aggiungi
+            </button>
+            {goals.length > 0 && (
+              <button
+                onClick={async () => {
+                  if (!token || syncing) return;
+                  setSyncing(true);
+                  try { await clientsApi.syncGoalsToHubspot(token, id); } catch { /* ignore */ }
+                  finally { setSyncing(false); }
+                }}
+                disabled={syncing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-amber-500" />}
+                Sincronizza su HubSpot
+              </button>
+            )}
+          </div>
+
+          {showAddGoal && (
+            <Card>
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  placeholder="Titolo obiettivo"
+                  value={newGoalTitle}
+                  onChange={e => setNewGoalTitle(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <textarea
+                  placeholder="Descrizione (opzionale)"
+                  value={newGoalDesc}
+                  onChange={e => setNewGoalDesc(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!token || !newGoalTitle.trim()) return;
+                      await clientsApi.createGoal(token, id, { title: newGoalTitle.trim(), description: newGoalDesc.trim() || undefined });
+                      const r = await clientsApi.getGoals(token, id);
+                      setGoals(r.data ?? []);
+                      setNewGoalTitle('');
+                      setNewGoalDesc('');
+                      setShowAddGoal(false);
+                    }}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    Salva
+                  </button>
+                  <button
+                    onClick={() => { setShowAddGoal(false); setNewGoalTitle(''); setNewGoalDesc(''); }}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    Annulla
+                  </button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {goals.length === 0 ? (
+            <Card>
+              <p className="text-slate-400 text-sm text-center py-8">
+                Nessun obiettivo ancora. Usa &quot;Estrai da HubSpot&quot; per analizzare gli engagement con l&apos;AI, oppure aggiungine uno manualmente.
+              </p>
+            </Card>
+          ) : (
+            <Card padding="none">
+              <ul className="divide-y divide-slate-100">
+                {goals.map(g => (
+                  <li key={g.id} className="px-5 py-3">
+                    {editingGoalId === g.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={e => setEditTitle(e.target.value)}
+                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <textarea
+                          value={editDesc}
+                          onChange={e => setEditDesc(e.target.value)}
+                          rows={2}
+                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!token) return;
+                              await clientsApi.updateGoal(token, id, { goalId: g.id, title: editTitle, description: editDesc });
+                              const r = await clientsApi.getGoals(token, id);
+                              setGoals(r.data ?? []);
+                              setEditingGoalId(null);
+                            }}
+                            className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                          >
+                            Salva
+                          </button>
+                          <button onClick={() => setEditingGoalId(null)} className="px-2.5 py-1 text-xs font-medium rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50">
+                            Annulla
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3">
+                        <Target className={`w-4 h-4 mt-0.5 shrink-0 ${g.status === 'achieved' ? 'text-emerald-500' : g.status === 'abandoned' ? 'text-slate-300' : 'text-blue-500'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className={`text-sm font-medium ${g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-900'}`}>
+                              {g.title}
+                            </p>
+                            <Badge
+                              variant={g.status === 'achieved' ? 'success' : g.status === 'abandoned' ? 'default' : 'info'}
+                              size="sm"
+                            >
+                              {g.status === 'active' ? 'Attivo' : g.status === 'achieved' ? 'Raggiunto' : 'Abbandonato'}
+                            </Badge>
+                            <Badge variant="default" size="sm">
+                              {g.source === 'playbook' ? 'Playbook' : g.source === 'ai_extracted' ? 'AI' : 'Manuale'}
+                            </Badge>
+                          </div>
+                          {g.mentionedAt && (
+                            <p className="text-xs text-slate-400 mb-0.5">
+                              Discusso il {format(new Date(g.mentionedAt), 'd MMM yyyy', { locale: it })}
+                            </p>
+                          )}
+                          {g.description && <p className="text-xs text-slate-500">{g.description}</p>}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => { setEditingGoalId(g.id); setEditTitle(g.title); setEditDesc(g.description ?? ''); }}
+                            className="p-1 text-xs text-slate-400 hover:text-slate-600"
+                          >
+                            Modifica
+                          </button>
+                          {g.status === 'active' && (
+                            <button
+                              onClick={async () => {
+                                if (!token) return;
+                                await clientsApi.updateGoal(token, id, { goalId: g.id, status: 'achieved' });
+                                const r = await clientsApi.getGoals(token, id);
+                                setGoals(r.data ?? []);
+                              }}
+                              className="p-1 text-xs text-emerald-600 hover:text-emerald-800"
+                            >
+                              Raggiunto
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

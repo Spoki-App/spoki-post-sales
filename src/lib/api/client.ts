@@ -2,7 +2,7 @@
  * Typed API client for frontend → Next.js API routes communication.
  */
 
-import type { Client, ClientWithHealth, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
+import type { Client, ClientWithHealth, ClientGoal, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
 
@@ -77,6 +77,16 @@ export const clientsApi = {
     }>>(`/clients/${id}/onboarding-history`, { token }),
   getAccountBrief: (token: string, id: string) =>
     fetchApi<ApiResponse<AccountBriefPayload>>(`/clients/${id}/account-brief`, { method: 'POST', token }),
+  getGoals: (token: string, id: string) =>
+    fetchApi<ApiResponse<ClientGoal[]>>(`/clients/${id}/goals`, { token }),
+  createGoal: (token: string, id: string, data: { title: string; description?: string; dueDate?: string }) =>
+    fetchApi<ApiResponse<{ id: string }>>(`/clients/${id}/goals`, { method: 'POST', token, body: JSON.stringify(data) }),
+  updateGoal: (token: string, id: string, data: { goalId: string; title?: string; description?: string; status?: string; dueDate?: string }) =>
+    fetchApi<ApiResponse<{ updated: boolean }>>(`/clients/${id}/goals`, { method: 'PATCH', token, body: JSON.stringify(data) }),
+  extractGoals: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ extracted: number }>>(`/clients/${id}/goals/extract`, { method: 'POST', token }),
+  syncGoalsToHubspot: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ noteId: string; goalsCount: number }>>(`/clients/${id}/goals/sync-hubspot`, { method: 'POST', token }),
 };
 
 // ─── Customer Success ──────────────────────────────────────────────────────────

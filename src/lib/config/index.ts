@@ -53,6 +53,12 @@ export const config = {
     apiKey: process.env.FATHOM_API_KEY || '',
     baseUrl: (process.env.FATHOM_API_BASE_URL || 'https://api.fathom.ai').replace(/\/$/, ''),
   },
+  ai: {
+    provider: (process.env.AI_PROVIDER || 'gemini') as 'gemini' | 'claude',
+    googleApiKey: process.env.GOOGLE_AI_API_KEY || '',
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  },
   accountBrief: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',

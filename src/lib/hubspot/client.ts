@@ -1003,6 +1003,20 @@ class HubSpotClient {
     return result;
   }
 
+  async createNoteOnCompany(companyHubspotId: string, body: string): Promise<string> {
+    const noteRes = await this.http.post('/crm/v3/objects/notes', {
+      properties: { hs_note_body: body, hs_timestamp: new Date().toISOString() },
+    });
+    const noteId = (noteRes.data as { id: string }).id;
+
+    await this.http.put(
+      `/crm/v4/objects/notes/${noteId}/associations/companies/${companyHubspotId}`,
+      [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }]
+    );
+
+    return noteId;
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       await this.http.get('/crm/v3/objects/companies', { params: { limit: 1 } });
