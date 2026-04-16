@@ -176,6 +176,25 @@ export interface Alert {
   triggeredAt: string;
 }
 
+// ─── Client Goal ─────────────────────────────────────────────────────────────
+export type GoalStatus = 'active' | 'achieved' | 'abandoned';
+export type GoalSource = 'manual' | 'ai_extracted' | 'playbook';
+
+export interface ClientGoal {
+  id: string;
+  clientId: string;
+  title: string;
+  description: string | null;
+  status: GoalStatus;
+  source: GoalSource;
+  sourceEngagementId: string | null;
+  mentionedAt: string | null;
+  dueDate: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 export interface Workflow {
   id: string;
