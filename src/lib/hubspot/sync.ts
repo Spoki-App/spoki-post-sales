@@ -22,11 +22,13 @@ const logger = getLogger('hubspot:sync');
  * Everything else from HubSpot is discarded at sync time.
  */
 const ENGAGEMENT_RAW_KEEP = new Set([
+  'hs_activity_type', 'hs_createdate',
   'hs_email_from_email', 'hs_email_from_firstname', 'hs_email_from_lastname',
   'hs_email_to_email', 'hs_email_to_firstname', 'hs_email_to_lastname',
   'hs_email_subject', 'hs_email_text',
   'hs_call_direction', 'hs_call_disposition', 'hs_call_title', 'hs_call_body',
   'hs_meeting_title', 'hs_meeting_body', 'hs_internal_meeting_notes',
+  'hs_meeting_start_time', 'hs_meeting_end_time', 'hs_meeting_outcome',
   'hs_task_subject', 'hs_task_status', 'hs_task_priority', 'hs_task_type',
   'hs_note_body', 'hs_body_preview',
 ]);
