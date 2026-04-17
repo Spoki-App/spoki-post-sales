@@ -12,8 +12,21 @@ import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail, isAdminEmail, HUBSPOT_OWNERS } from '@/lib/config/owners';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
-import type { ClientWithHealth } from '@/types';
+import type { ClientWithHealth, DealSummary } from '@/types';
 import { formatMrrDisplay } from '@/lib/format/mrr';
+
+function DealCell({ deal }: { deal: DealSummary | null }) {
+  if (!deal) return <span className="text-slate-400 text-xs">--</span>;
+  const variant = deal.isWon ? 'success' : deal.isClosed ? 'danger' : 'warning';
+  return (
+    <div className="space-y-0.5">
+      <Badge variant={variant} size="sm">{deal.stageLabel}</Badge>
+      {deal.dealName && <p className="text-xs text-slate-500 truncate max-w-[140px]">{deal.dealName}</p>}
+      {deal.amount != null && <p className="text-xs font-medium text-slate-600">{deal.amount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}</p>}
+      {deal.daysInStage != null && !deal.isClosed && <p className="text-xs text-slate-400">{deal.daysInStage} gg</p>}
+    </div>
+  );
+}
 
 const TICKET_PIPELINES: Record<string, string> = {
   '0': 'Onboarding',
@@ -178,7 +191,7 @@ export default function ClientsPage() {
     try {
       const params: Parameters<typeof clientsApi.list>[1] = {
         page, q, sort: sortBy, dir: sortDir,
-        ...(isAdmin || !hasOwnerProfile ? { viewAll: true } : {}),
+        ...(isAdmin || !hasOwnerProfile || selectedOwner ? { viewAll: true } : {}),
         ...(selectedOwner ? { owner: selectedOwner } : {}),
       };
       const res = await clientsApi.list(token, params, controller.signal);
@@ -278,6 +291,8 @@ export default function ClientsPage() {
                 {([
                   { label: 'Azienda', key: 'name' },
                   { label: 'Fonte', key: 'source' },
+                  { label: 'Deal Sales', key: '' },
+                  { label: 'Deal Upselling', key: '' },
                   { label: 'Onboarding', key: 'onboarding' },
                   { label: 'Giorni in pipeline', key: 'pipeline' },
                   { label: 'MRR', key: 'mrr' },
@@ -319,6 +334,8 @@ export default function ClientsPage() {
                   <tr key={i} className="border-b border-slate-100 animate-pulse">
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-40 mb-1" /><div className="h-3 bg-slate-100 rounded w-24" /></td>
                     <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-16" /></td>
+                    <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-20" /></td>
+                    <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-20" /></td>
                     <td className="px-4 py-3"><div className="h-3 bg-slate-100 rounded w-28" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-14" /></td>
@@ -331,7 +348,7 @@ export default function ClientsPage() {
                   </tr>
                 ))
               ) : clients.length === 0 ? (
-                <tr><td colSpan={11} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={13} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -360,6 +377,8 @@ export default function ClientsPage() {
                         <span className="text-slate-400 text-xs">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-3"><DealCell deal={c.salesDeal} /></td>
+                    <td className="px-4 py-3"><DealCell deal={c.upsellingDeal} /></td>
                     <td className="px-4 py-3">
                       {c.onboardingTicket ? (
                         <a

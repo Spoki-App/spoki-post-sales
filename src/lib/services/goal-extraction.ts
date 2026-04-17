@@ -17,18 +17,29 @@ interface EngagementRow {
   type: string;
   occurred_at: string;
   title: string | null;
-  body: string | null;
-  note_body: string | null;
+  content: string | null;
 }
 
 export async function extractGoalsForClient(clientId: string): Promise<number> {
+  const existingGoalsRes = await pgQuery<{ id: string; title: string; source: string }>(
+    `SELECT id, title, source FROM client_goals WHERE client_id = $1`,
+    [clientId]
+  );
+  const manualGoals = existingGoalsRes.rows.filter(g => g.source === 'manual');
+  const aiGoalIds = existingGoalsRes.rows.filter(g => g.source !== 'manual').map(g => g.id);
+
   const engRes = await pgQuery<EngagementRow>(
-    `SELECT e.id, e.type, e.occurred_at, e.title,
-            ed.body, ed.note_body
-     FROM engagements e
-     LEFT JOIN engagement_details ed ON ed.engagement_id = e.id
-     WHERE e.client_id = $1
-     ORDER BY e.occurred_at DESC
+    `SELECT id, type, occurred_at, title,
+            COALESCE(
+              raw_properties->>'hs_note_body',
+              raw_properties->>'hs_call_body',
+              raw_properties->>'hs_email_text',
+              raw_properties->>'hs_meeting_body',
+              raw_properties->>'hs_body_preview'
+            ) AS content
+     FROM engagements
+     WHERE client_id = $1
+     ORDER BY occurred_at DESC
      LIMIT 80`,
     [clientId]
   );
@@ -44,7 +55,7 @@ export async function extractGoalsForClient(clientId: string): Promise<number> {
 
   engagements.forEach((e, i) => {
     const date = new Date(e.occurred_at).toISOString().slice(0, 10);
-    const content = e.note_body || e.body || e.title || '';
+    const content = e.content || e.title || '';
     if (!content.trim()) return;
 
     const hasStructuredFields = content.includes('##') || content.includes('**') || content.length > 500;
@@ -57,6 +68,17 @@ export async function extractGoalsForClient(clientId: string): Promise<number> {
     }
   });
 
+  if (playbooks.length === 0 && otherEngagements.length === 0) {
+    logger.info('No usable engagement content for client', { clientId });
+    return 0;
+  }
+
+  const manualGoalsList = manualGoals.length > 0
+    ? manualGoals.map(g => `- "${g.title}"`).join('\n')
+    : '(none)';
+
+  const maxNewGoals = Math.max(0, 5 - manualGoals.length);
+
   const prompt = `You are a Customer Success analyst at Spoki. Analyze the following engagement data for a client and extract concrete OBJECTIVES / GOALS that were agreed upon, discussed, or implied during interactions.
 
 === STRUCTURED PLAYBOOK NOTES ===
@@ -65,13 +87,18 @@ ${playbooks.length > 0 ? playbooks.join('\n\n---\n\n') : '(none)'}
 === OTHER ENGAGEMENTS (calls, emails, meetings) ===
 ${otherEngagements.length > 0 ? otherEngagements.join('\n\n---\n\n') : '(none)'}
 
+=== EXISTING MANUAL GOALS (do NOT duplicate these) ===
+${manualGoalsList}
+
 Reply ONLY with valid JSON (no markdown, no backticks):
 [
   {"title": "short goal title (max 80 chars)", "description": "1-2 sentence description of the goal and context", "mentionedAt": "YYYY-MM-DD", "fromPlaybook": true/false, "engagementIndex": N or null}
 ]
 
 Rules:
-- Extract 3-10 goals maximum, focusing on the most concrete and actionable ones.
+- Extract up to ${maxNewGoals} goals maximum. If there are already 5 or more manual goals, return [].
+- Each goal must be clearly distinct from all others. Do NOT create similar or overlapping goals.
+- Do NOT duplicate or rephrase any of the existing manual goals listed above.
 - Goals should be things like: feature adoption targets, usage milestones, onboarding checkpoints, integration goals, training objectives, campaign launch targets.
 - Do NOT extract generic platitudes like "improve customer satisfaction".
 - mentionedAt is the date (YYYY-MM-DD) when this goal was first discussed or agreed upon, taken from the engagement timeline dates. Use the earliest date where this goal appears.
@@ -86,9 +113,18 @@ Rules:
   try {
     parsed = JSON.parse(rawJson);
     if (!Array.isArray(parsed)) parsed = [];
+    parsed = parsed.slice(0, maxNewGoals);
   } catch {
     logger.error('Failed to parse AI response', { rawJson: rawJson.slice(0, 500) });
     return 0;
+  }
+
+  if (aiGoalIds.length > 0) {
+    await pgQuery(
+      `DELETE FROM client_goals WHERE id = ANY($1::uuid[])`,
+      [aiGoalIds]
+    );
+    logger.info('Removed old AI goals before re-extraction', { clientId, removed: aiGoalIds.length });
   }
 
   let inserted = 0;
@@ -101,13 +137,18 @@ Rules:
 
     const source = goal.fromPlaybook ? 'playbook' : 'ai_extracted';
 
-    await pgQuery(
+    const res = await pgQuery<{ id: string }>(
       `INSERT INTO client_goals (client_id, title, description, status, source, source_engagement_id, mentioned_at, created_by)
        VALUES ($1, $2, $3, 'active', $4, $5, $6, 'ai')
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (client_id, title) DO UPDATE SET
+         description = EXCLUDED.description,
+         source = EXCLUDED.source,
+         source_engagement_id = EXCLUDED.source_engagement_id,
+         mentioned_at = EXCLUDED.mentioned_at
+       RETURNING id`,
       [clientId, goal.title.slice(0, 200), goal.description || null, source, engagementId, goal.mentionedAt || null]
     );
-    inserted++;
+    if (res.rows.length > 0) inserted++;
   }
 
   logger.info('Goals extracted and inserted', { clientId, total: parsed.length, inserted });
