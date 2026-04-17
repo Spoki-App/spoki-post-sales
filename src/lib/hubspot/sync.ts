@@ -13,6 +13,7 @@ import {
   type MrrEnrichmentStats,
 } from './client';
 import { getLogger } from '@/lib/logger';
+import { HUBSPOT_COMPANY_PROPS } from '@/lib/config/hubspot-props';
 
 const logger = getLogger('hubspot:sync');
 
@@ -36,6 +37,14 @@ const TICKET_RAW_KEEP = new Set([
 ]);
 
 const TRUNCATE_AT = 500;
+
+function companyRawPropertyKeysForDb(): Set<string> {
+  const keys = new Set<string>();
+  const pk = HUBSPOT_COMPANY_PROPS.primaryContactHubspotId.trim();
+  if (pk && /^[a-zA-Z0-9_]+$/.test(pk)) keys.add(pk);
+  return keys;
+}
+
 const ENGAGEMENT_RAW_TRUNCATE = new Set([
   'hs_email_text', 'hs_body_preview', 'hs_note_body',
   'hs_call_body', 'hs_meeting_body', 'hs_internal_meeting_notes',
@@ -98,7 +107,8 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
     const onboardingStatuses = chunk.map(c => c.onboardingStatus);
     const csOwnerIds = chunk.map(c => c.companyOwnerId);
     const churnRisks = chunk.map(c => c.churnRisk);
-    const rawProps = chunk.map(() => JSON.stringify({}));
+    const companyRawKeep = companyRawPropertyKeysForDb();
+    const rawProps = chunk.map(c => JSON.stringify(pickKeys(c.rawProperties, companyRawKeep)));
 
     await pgQuery(
       `INSERT INTO clients (

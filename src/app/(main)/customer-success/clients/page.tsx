@@ -7,6 +7,7 @@ import { customerSuccessApi } from '@/lib/api/client';
 import { Card } from '@/components/ui/Card';
 import { Search, ChevronRight } from 'lucide-react';
 import { formatMrrDisplay } from '@/lib/format/mrr';
+import { ContactPersonCell } from '@/components/clients/ContactPersonCell';
 
 export default function CsClientsPage() {
   const { token } = useAuthStore();
@@ -20,6 +21,12 @@ export default function CsClientsPage() {
     plan: string | null;
     mrr: number | null;
     renewalDate: string | null;
+    contactPerson: {
+      firstName: string | null;
+      lastName: string | null;
+      email: string | null;
+      hubspotId: string;
+    } | null;
   }>>([]);
   const [q, setQ] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -77,6 +84,7 @@ export default function CsClientsPage() {
             <thead>
               <tr className="border-b border-slate-200">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Azienda</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Contact person</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">MRR</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Piano</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">HubSpot</th>
@@ -85,15 +93,18 @@ export default function CsClientsPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="py-12 text-center text-slate-400">Caricamento…</td></tr>
+                <tr><td colSpan={6} className="py-12 text-center text-slate-400">Caricamento…</td></tr>
               ) : clients.length === 0 ? (
-                <tr><td colSpan={5} className="py-12 text-center text-slate-400">Nessun cliente in portfolio.</td></tr>
+                <tr><td colSpan={6} className="py-12 text-center text-slate-400">Nessun cliente in portfolio.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-900">{c.name}</p>
                       {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <ContactPersonCell contact={c.contactPerson} />
                     </td>
                     <td className="px-4 py-3">{formatMrrDisplay(c.mrr)}</td>
                     <td className="px-4 py-3 text-slate-700">{c.plan ?? '—'}</td>

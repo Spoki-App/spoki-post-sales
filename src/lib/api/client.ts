@@ -122,6 +122,12 @@ export const customerSuccessApi = {
         plan: string | null;
         mrr: number | null;
         renewalDate: string | null;
+        contactPerson: {
+          firstName: string | null;
+          lastName: string | null;
+          email: string | null;
+          hubspotId: string;
+        } | null;
       }>
     >(`/customer-success/clients${qs ? `?${qs}` : ''}`, { token });
   },
@@ -268,28 +274,6 @@ export const qbrApi = {
 export const reportsApi = {
   summary: (token: string) =>
     fetchApi<ApiResponse<Record<string, unknown>>>('/reports/summary', { token }),
-};
-
-export type MySentEmailRow = {
-  hubspotId: string;
-  occurredAt: string;
-  subject: string;
-  toEmail: string | null;
-  clientId: string;
-  clientName: string;
-  clientHubspotId: string | null;
-};
-
-export const meApi = {
-  sentEmails: (token: string) =>
-    fetchApi<
-      ApiResponse<{
-        ownerMapped: boolean;
-        ownerName?: string;
-        emails: MySentEmailRow[];
-        stats: { total: number; last30Days: number; windowDays: number };
-      }>
-    >('/me/sent-emails', { token }),
 };
 
 export type TeamReportCallRow = {

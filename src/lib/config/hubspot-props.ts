@@ -30,6 +30,11 @@ export const HUBSPOT_COMPANY_PROPS = {
   churnRisk: 'churn_risk',              // manual churn risk flag if set
   /** Company property "Activation call" (date) — internal name from HubSpot */
   activationCall: 'activation_call',
+  /**
+   * HubSpot company property whose value is the **Contact record ID** (numeric string) of the primary contact.
+   * Leave empty until you set the internal name from HubSpot (Settings → Properties → Companies).
+   */
+  primaryContactHubspotId: '',
 } as const;
 
 export const HUBSPOT_CONTACT_PROPS = {

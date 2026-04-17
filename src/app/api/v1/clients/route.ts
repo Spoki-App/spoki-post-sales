@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { withAuth, createSuccessResponse, createErrorResponse, type AuthenticatedRequest } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 import { getOwnerByEmail } from '@/lib/config/owners';
+import { sqlContactPersonPickOrder } from '@/lib/db/contact-person-pick-order';
 
 const ONBOARDING_SORT_EXPR = `CASE ob.status
   WHEN '1' THEN 1 WHEN '1011192836' THEN 2 WHEN '2' THEN 3
@@ -109,13 +110,17 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       last_engagement_hubspot_id: string | null; last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
       last_engagement_email_from: string | null; last_engagement_email_to: string | null;
       last_engagement_call_direction: string | null; last_engagement_call_disposition: string | null; last_engagement_call_title: string | null;
+      contact_first_name: string | null;
+      contact_last_name: string | null;
+      contact_email: string | null;
+      contact_hubspot_id: string | null;
     }>(
       `WITH paged AS (
         SELECT
           c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
           c.renewal_date, c.cs_owner_id, c.onboarding_status,
           c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
-          c.last_contact_date,
+          c.last_contact_date, c.raw_properties,
           ob.hubspot_id AS ob_hubspot_id,
           ob.pipeline AS ob_pipeline,
           ob.status AS ob_status,
@@ -145,7 +150,11 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         (le.raw_properties::jsonb->>'hs_email_to_firstname') || ' ' || (le.raw_properties::jsonb->>'hs_email_to_lastname') AS last_engagement_email_to,
         le.raw_properties::jsonb->>'hs_call_direction' AS last_engagement_call_direction,
         le.raw_properties::jsonb->>'hs_call_disposition' AS last_engagement_call_disposition,
-        le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title
+        le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title,
+        cp.first_name AS contact_first_name,
+        cp.last_name AS contact_last_name,
+        cp.email AS contact_email,
+        cp.hubspot_id AS contact_hubspot_id
       FROM paged
       LEFT JOIN LATERAL (
         SELECT hubspot_id, status, subject FROM tickets
@@ -160,7 +169,14 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
             SELECT co.id FROM contacts co WHERE co.client_id = paged.id
           ))
         ORDER BY e.occurred_at DESC LIMIT 1
-      ) le ON true`,
+      ) le ON true
+      LEFT JOIN LATERAL (
+        SELECT first_name, last_name, email, hubspot_id
+        FROM contacts
+        WHERE client_id = paged.id
+        ${sqlContactPersonPickOrder('paged.raw_properties')}
+        LIMIT 1
+      ) cp ON true`,
       params
     );
 
@@ -204,6 +220,14 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         callDisposition: r.last_engagement_call_disposition || null,
         callTitle: r.last_engagement_call_title || null,
       } : null,
+      contactPerson: r.contact_hubspot_id
+        ? {
+            firstName: r.contact_first_name,
+            lastName: r.contact_last_name,
+            email: r.contact_email,
+            hubspotId: r.contact_hubspot_id,
+          }
+        : null,
     }));
 
     return createSuccessResponse({ data, total, page, pageSize });

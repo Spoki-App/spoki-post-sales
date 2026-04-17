@@ -51,6 +51,13 @@ export interface ClientWithHealth extends Client {
     callDisposition: string | null;
     callTitle: string | null;
   } | null;
+  /** Primary HubSpot contact for list views: most recently active, then name order. */
+  contactPerson: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    hubspotId: string;
+  } | null;
 }
 
 // ─── Contact ──────────────────────────────────────────────────────────────────
