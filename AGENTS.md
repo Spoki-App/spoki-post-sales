@@ -1,3 +1,7 @@
+<!-- BEGIN:repo-conventions -->
+Use Git branch **`katerina`** for all work in this clone (create it from `main` if missing, never commit on `main` unless explicitly asked).
+<!-- END:repo-conventions -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
