@@ -15,6 +15,7 @@ import type { ClientWithHealth, Alert } from '@/types';
 import { NrrGrrCards } from '@/components/dashboard/NrrGrrCards';
 import { DailyKpisWidget } from '@/components/dashboard/DailyKpisWidget';
 import { ChurnRiskPanel } from '@/components/dashboard/ChurnRiskPanel';
+import { MySentEmailsSummary } from '@/components/dashboard/MySentEmailsSummary';
 
 interface SummaryData {
   totalClients: number;
@@ -108,6 +109,8 @@ export default function DashboardPage() {
           onComplete={load}
         />
       </div>
+
+      <MySentEmailsSummary />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KpiCard

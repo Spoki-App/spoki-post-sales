@@ -17,17 +17,52 @@ interface EngagementRow {
   type: string;
   occurred_at: string;
   title: string | null;
-  body: string | null;
-  note_body: string | null;
+  raw_properties: Record<string, unknown> | null;
+}
+
+const RAW_TEXT_KEYS = [
+  'hs_email_subject',
+  'hs_email_text',
+  'hs_call_title',
+  'hs_call_body',
+  'hs_meeting_title',
+  'hs_meeting_body',
+  'hs_internal_meeting_notes',
+  'hs_note_body',
+  'hs_body_preview',
+  'hs_task_subject',
+  'hs_task_type',
+] as const;
+
+function parseRawProperties(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw || '{}') as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function textFromEngagementRaw(raw: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const k of RAW_TEXT_KEYS) {
+    const v = raw[k];
+    if (typeof v === 'string' && v.trim()) parts.push(v.trim());
+  }
+  return parts.join('\n\n');
 }
 
 export async function extractGoalsForClient(clientId: string): Promise<number> {
   const engRes = await pgQuery<EngagementRow>(
-    `SELECT e.id, e.type, e.occurred_at, e.title,
-            ed.body, ed.note_body
+    `SELECT e.id, e.type, e.occurred_at, e.title, e.raw_properties
      FROM engagements e
-     LEFT JOIN engagement_details ed ON ed.engagement_id = e.id
-     WHERE e.client_id = $1
+     LEFT JOIN contacts co ON e.contact_id = co.id
+     WHERE e.client_id = $1 OR co.client_id = $1
      ORDER BY e.occurred_at DESC
      LIMIT 80`,
     [clientId]
@@ -44,7 +79,8 @@ export async function extractGoalsForClient(clientId: string): Promise<number> {
 
   engagements.forEach((e, i) => {
     const date = new Date(e.occurred_at).toISOString().slice(0, 10);
-    const content = e.note_body || e.body || e.title || '';
+    const raw = parseRawProperties(e.raw_properties);
+    const content = textFromEngagementRaw(raw) || (e.title ?? '').trim();
     if (!content.trim()) return;
 
     const hasStructuredFields = content.includes('##') || content.includes('**') || content.length > 500;
