@@ -183,6 +183,14 @@ class HubSpotClient {
         await new Promise(r => setTimeout(r, wait));
         return this.getWithRetry(url, params, options, attempt + 1);
       }
+      const meta = hubspotErrMeta(err);
+      logger.error('HubSpot request failed', {
+        url,
+        method: options?.method ?? 'GET',
+        status: meta.status,
+        body: meta.body?.slice(0, 800),
+        message: meta.message,
+      });
       throw err;
     }
   }
@@ -246,12 +254,17 @@ class HubSpotClient {
   }
 
   async getCompanies(): Promise<HSCompany[]> {
-    logger.info('Fetching companies from HubSpot (filtered by CS owner)');
+    logger.info('Fetching companies from HubSpot (filtered by post-sales owners)');
     const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
 
-    // Fetch companies where ANY of the three owner fields matches a known CS/Support team member
+    // Post-sales portfolio = companies owned by Customer Success, Customer Support, or Partner Success.
+    // The HubSpot Search API caps results at 10k per query; restricting to these teams keeps the
+    // result set well below that limit (~4.8k) and avoids the 400 that occurs when paginating past 10k.
     const { HUBSPOT_OWNERS } = await import('@/lib/config/owners');
-    const ownerIds = Object.keys(HUBSPOT_OWNERS);
+    const POST_SALES_TEAMS = new Set(['Customer Success', 'Customer Support', 'Partner Success']);
+    const ownerIds = Object.values(HUBSPOT_OWNERS)
+      .filter(o => POST_SALES_TEAMS.has(o.team))
+      .map(o => o.id);
 
     const results: HSCompany[] = [];
     let after: string | undefined;
