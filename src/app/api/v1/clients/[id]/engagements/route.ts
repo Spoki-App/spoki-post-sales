@@ -15,7 +15,15 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
       `SELECT e.id, e.hubspot_id, e.type, e.occurred_at, e.owner_id, e.title, e.raw_properties::text
        FROM engagements e
        LEFT JOIN contacts co ON e.contact_id = co.id
-       WHERE e.client_id = $1 OR co.client_id = $1
+       WHERE e.client_id = $1::uuid
+          OR co.client_id = $1::uuid
+          OR EXISTS (
+            SELECT 1 FROM clients c
+            WHERE c.id = $1::uuid
+              AND NULLIF(BTRIM(c.hubspot_id::text), '') IS NOT NULL
+              AND NULLIF(BTRIM(e.company_hubspot_id::text), '') IS NOT NULL
+              AND BTRIM(e.company_hubspot_id::text) = BTRIM(c.hubspot_id::text)
+          )
        ORDER BY e.occurred_at DESC LIMIT 100`,
       [id]
     );

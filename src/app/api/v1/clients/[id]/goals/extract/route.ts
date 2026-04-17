@@ -8,8 +8,15 @@ export const POST = withAuth(async (_req: NextRequest, _auth: AuthenticatedReque
     const clientId = params?.id as string;
     if (!clientId) throw new ApiError(400, 'Missing client id');
 
-    const inserted = await extractGoalsForClient(clientId);
-    return createSuccessResponse({ data: { extracted: inserted } });
+    const result = await extractGoalsForClient(clientId);
+    return createSuccessResponse({
+      data: {
+        extracted: result.inserted,
+        engagementCount: result.engagementRows,
+        contextLines: result.contextLines,
+        hint: result.hint,
+      },
+    });
   } catch (error) {
     return createErrorResponse(error);
   }

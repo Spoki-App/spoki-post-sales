@@ -1,6 +1,6 @@
 # Ciao Giulio! Benvenuto nel progetto spoki-post-sales
 
-Il tuo branch e' `feature/giulio`.
+Il tuo branch e' `Riccardo`.
 
 Questo documento ti spiega come funziona il progetto e cosa puoi chiedere a Cursor di fare per te. Non devi imparare comandi o usare il terminale: apri la chat di Cursor e chiedi quello che ti serve.
 

@@ -84,7 +84,14 @@ export const clientsApi = {
   updateGoal: (token: string, id: string, data: { goalId: string; title?: string; description?: string; status?: string; dueDate?: string }) =>
     fetchApi<ApiResponse<{ updated: boolean }>>(`/clients/${id}/goals`, { method: 'PATCH', token, body: JSON.stringify(data) }),
   extractGoals: (token: string, id: string) =>
-    fetchApi<ApiResponse<{ extracted: number }>>(`/clients/${id}/goals/extract`, { method: 'POST', token }),
+    fetchApi<
+      ApiResponse<{
+        extracted: number;
+        engagementCount: number;
+        contextLines: number;
+        hint?: 'no_engagements' | 'ai_empty';
+      }>
+    >(`/clients/${id}/goals/extract`, { method: 'POST', token }),
   syncGoalsToHubspot: (token: string, id: string) =>
     fetchApi<ApiResponse<{ noteId: string; goalsCount: number }>>(`/clients/${id}/goals/sync-hubspot`, { method: 'POST', token }),
 };

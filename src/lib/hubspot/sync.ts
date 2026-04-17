@@ -343,22 +343,23 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
     await pgQuery(
       `INSERT INTO engagements (
         hubspot_id, client_id, contact_id, type, occurred_at,
-        owner_id, title, raw_properties, last_synced_at
+        owner_id, title, raw_properties, last_synced_at, company_hubspot_id
       )
       SELECT * FROM UNNEST(
         $1::text[], $2::uuid[], $3::uuid[], $4::text[], $5::timestamptz[],
-        $6::text[], $7::text[], $8::jsonb[], $9::timestamptz[]
+        $6::text[], $7::text[], $8::jsonb[], $9::timestamptz[], $10::text[]
       ) AS t(hubspot_id, client_id, contact_id, type, occurred_at,
-             owner_id, title, raw_properties, last_synced_at)
+             owner_id, title, raw_properties, last_synced_at, company_hubspot_id)
       ON CONFLICT (hubspot_id) DO UPDATE SET
-        client_id      = EXCLUDED.client_id,
-        contact_id     = EXCLUDED.contact_id,
-        type           = EXCLUDED.type,
-        occurred_at    = EXCLUDED.occurred_at,
-        owner_id       = EXCLUDED.owner_id,
-        title          = EXCLUDED.title,
-        raw_properties = EXCLUDED.raw_properties,
-        last_synced_at = NOW()`,
+        client_id           = EXCLUDED.client_id,
+        contact_id          = EXCLUDED.contact_id,
+        type                = EXCLUDED.type,
+        occurred_at         = EXCLUDED.occurred_at,
+        owner_id            = EXCLUDED.owner_id,
+        title               = EXCLUDED.title,
+        raw_properties      = EXCLUDED.raw_properties,
+        company_hubspot_id  = COALESCE(EXCLUDED.company_hubspot_id, engagements.company_hubspot_id),
+        last_synced_at      = NOW()`,
       [
         chunk.map(e => e.id),
         chunk.map(e => {
@@ -376,6 +377,7 @@ async function syncEngagements(engagements: HSEngagement[]): Promise<number> {
           return json.replace(/\\u0000/g, '');
         }),
         chunk.map(() => new Date()),
+        chunk.map(e => e.companyId ?? null),
       ]
     );
     count += chunk.length;

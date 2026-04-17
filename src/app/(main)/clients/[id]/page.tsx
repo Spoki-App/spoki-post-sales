@@ -108,6 +108,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [goalExtractMessage, setGoalExtractMessage] = useState<string | null>(null);
 
   const loadAccountBrief = useCallback(async () => {
     if (!token || !id) return;
@@ -631,12 +632,32 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               onClick={async () => {
                 if (!token || extracting) return;
                 setExtracting(true);
+                setGoalExtractMessage(null);
                 try {
-                  await clientsApi.extractGoals(token, id);
+                  const ex = await clientsApi.extractGoals(token, id);
+                  const d = ex.data;
+                  if (!d) {
+                    setGoalExtractMessage(null);
+                  } else if (d.hint === 'no_engagements') {
+                    setGoalExtractMessage(
+                      'Nessun engagement trovato in database per questo cliente. Esegui la sincronizzazione HubSpot (tipo «engagements») e riprova.'
+                    );
+                  } else if (d.hint === 'ai_empty' && d.extracted === 0) {
+                    setGoalExtractMessage(
+                      `Analizzati ${d.engagementCount} engagement: l’AI non ha estratto obiettivi concreti dal testo disponibile. Controlla che note/email/chiamate abbiano contenuto in HubSpot e che la sync includa le proprietà (hs_note_body, hs_email_text, ecc.).`
+                    );
+                  } else if (d.extracted > 0) {
+                    setGoalExtractMessage(`Inseriti ${d.extracted} obiettivi.`);
+                  } else {
+                    setGoalExtractMessage(null);
+                  }
                   const r = await clientsApi.getGoals(token, id);
                   setGoals(r.data ?? []);
-                } catch { /* ignore */ }
-                finally { setExtracting(false); }
+                } catch (e) {
+                  setGoalExtractMessage(e instanceof Error ? e.message : 'Estrazione non riuscita');
+                } finally {
+                  setExtracting(false);
+                }
               }}
               disabled={extracting}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
@@ -655,8 +676,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 onClick={async () => {
                   if (!token || syncing) return;
                   setSyncing(true);
-                  try { await clientsApi.syncGoalsToHubspot(token, id); } catch { /* ignore */ }
-                  finally { setSyncing(false); }
+                  try {
+                    await clientsApi.syncGoalsToHubspot(token, id);
+                  } catch (e) {
+                    setGoalExtractMessage(e instanceof Error ? e.message : 'Sync HubSpot non riuscita');
+                  } finally {
+                    setSyncing(false);
+                  }
                 }}
                 disabled={syncing}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
@@ -666,6 +692,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </button>
             )}
           </div>
+
+          {goalExtractMessage && (
+            <p className="text-sm text-slate-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              {goalExtractMessage}
+            </p>
+          )}
 
           {showAddGoal && (
             <Card>
