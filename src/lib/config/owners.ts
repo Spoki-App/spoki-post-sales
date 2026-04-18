@@ -88,18 +88,33 @@ const EMAIL_ALIASES: Record<string, string> = {
   'riccardo.marino@spoki.it': 'riccardo.marino@spoki.com',
 };
 
-const ADMIN_EMAILS = new Set([
+const BUILTIN_ADMIN_EMAILS = [
   'giulio.trinchera@spoki.com',
   'giulio.trinchera@spoki.it',
   'daniela.pascale@spoki.it',
   'marco.manigrassi@spoki.it',
-]);
+];
+
+/**
+ * Risolto al primo accesso. Combina la lista hardcoded con le email opzionali
+ * fornite via env var ADMIN_EMAILS (separate da virgola).
+ */
+let adminEmailsCache: Set<string> | null = null;
+function getAdminEmails(): Set<string> {
+  if (adminEmailsCache) return adminEmailsCache;
+  const fromEnv = (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+  adminEmailsCache = new Set([...BUILTIN_ADMIN_EMAILS, ...fromEnv]);
+  return adminEmailsCache;
+}
 
 export function isAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false;
   const normalized = email.toLowerCase();
   const resolved = EMAIL_ALIASES[normalized] ?? normalized;
-  return ADMIN_EMAILS.has(resolved);
+  return getAdminEmails().has(resolved);
 }
 
 export function getOwnerByEmail(email: string | null | undefined): HubSpotOwner | null {

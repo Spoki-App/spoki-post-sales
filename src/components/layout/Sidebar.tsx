@@ -20,7 +20,7 @@ import {
   HeartHandshake,
   Database,
   AlertTriangle,
-  Phone,
+  Shield,
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -120,15 +120,11 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Task, Alert, Churn, Report (+ Attivazioni admin) */}
+        {/* Task, Alert, Churn, Report */}
         {[
           { href: '/tasks', label: 'Task', Icon: CheckSquare },
           { href: '/alerts', label: 'Alert', Icon: Bell },
           { href: '/churn-tracker', label: 'Churn Tracker', Icon: AlertTriangle },
-          ...(isAdmin ? [
-            { href: '/team-reports', label: 'Attivazioni - Report', Icon: Phone },
-            { href: '/training-reports', label: 'Training - Report', Icon: GraduationCap }
-          ] as const : []),
           { href: '/reports', label: 'Report', Icon: BarChart3 },
         ].map(({ href, label, Icon }) => (
           <Link
@@ -143,6 +139,36 @@ export function Sidebar() {
             {label}
           </Link>
         ))}
+
+        {isAdmin && (
+          <div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
+              <Shield className="w-4 h-4 shrink-0" />
+              <span>Admin</span>
+            </div>
+            <div className="ml-4 space-y-0.5">
+              {[
+                { href: '/admin/team-reports', label: 'Attivazioni' },
+                { href: '/admin/training-reports', label: 'Training' },
+                { href: '/admin/prompts', label: 'Prompt e criteri' },
+              ].map(({ href, label }) => {
+                const active = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      active ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* DB usage */}

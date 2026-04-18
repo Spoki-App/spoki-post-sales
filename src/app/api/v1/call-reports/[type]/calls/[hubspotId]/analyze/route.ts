@@ -1,14 +1,18 @@
 import { NextRequest } from 'next/server';
-import { type RouteHandlerContext, createErrorResponse, ApiError } from '@/lib/api/middleware';
+import { createErrorResponse, ApiError, type RouteHandlerContext } from '@/lib/api/middleware';
+import { isCallType } from '@/lib/services/meeting-analysis';
 import { handleSingleAnalyzeRequest } from '@/lib/services/call-reports';
 
-// Legacy endpoint: always training. Canonical: /api/v1/call-reports/training/calls/[hubspotId]/analyze
 export async function POST(request: NextRequest, context: RouteHandlerContext) {
   try {
     const params = await context.params;
+    const type = params.type as string | undefined;
     const hubspotId = params.hubspotId as string | undefined;
+    if (!isCallType(type)) {
+      throw new ApiError(400, "type must be 'activation' or 'training'");
+    }
     if (!hubspotId) throw new ApiError(400, 'hubspotId is required');
-    return await handleSingleAnalyzeRequest('training', request, hubspotId);
+    return await handleSingleAnalyzeRequest(type, request, hubspotId);
   } catch (error) {
     return createErrorResponse(error);
   }
