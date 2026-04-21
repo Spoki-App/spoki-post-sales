@@ -98,6 +98,8 @@ export interface HSCompany {
 export interface HSContact {
   id: string;
   companyId: string | null;
+  /** True when the contact is the company's primary contact (HubSpot association typeId 2). */
+  isPrimaryForCompany: boolean;
   email: string | null;
   firstName: string | null;
   lastName: string | null;
@@ -110,6 +112,9 @@ export interface HSContact {
   createDate: string | null;
   rawProperties: Record<string, unknown>;
 }
+
+/** HubSpot association typeId for "Primary Contact" on Company → Contact. */
+const PRIMARY_CONTACT_ASSOC_TYPE_ID = 2;
 
 export interface HSTicket {
   id: string;
@@ -358,6 +363,9 @@ class HubSpotClient {
       ({ id, properties: p }, companyIds) => ({
         id,
         companyId: companyIds[0] ?? null,
+        // Legacy unfiltered fetch doesn't expose association types; primary flag
+        // is reconciled by getContactsForCompanies (v4) which is the path used by sync.
+        isPrimaryForCompany: false,
         email: p[HUBSPOT_CONTACT_PROPS.email] ?? null,
         firstName: p[HUBSPOT_CONTACT_PROPS.firstName] ?? null,
         lastName: p[HUBSPOT_CONTACT_PROPS.lastName] ?? null,
@@ -387,7 +395,7 @@ class HubSpotClient {
     const BATCH = 100;
 
     // Step 1: resolve company → contact IDs via v4 associations batch
-    const contactToCompanyMap: Record<string, string> = {};
+    const contactToCompanyMap: Record<string, { companyId: string; isPrimary: boolean }> = {};
 
     for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
       const slice = companyHubspotIds.slice(i, i + BATCH);
@@ -396,12 +404,26 @@ class HubSpotClient {
           method: 'POST',
           data: { inputs: slice.map(id => ({ id })) },
         });
-        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string }> }> };
+        const data = res.data as {
+          results: Array<{
+            from: { id: string };
+            to: Array<{
+              toObjectId: string;
+              associationTypes?: Array<{ category?: string; typeId?: number; label?: string | null }>;
+            }>;
+          }>;
+        };
         for (const item of data.results ?? []) {
           for (const assoc of item.to ?? []) {
-            // Keep first company found per contact
-            if (!contactToCompanyMap[assoc.toObjectId]) {
-              contactToCompanyMap[assoc.toObjectId] = item.from.id;
+            const isPrimary = (assoc.associationTypes ?? []).some(
+              t => t.typeId === PRIMARY_CONTACT_ASSOC_TYPE_ID
+            );
+            const existing = contactToCompanyMap[assoc.toObjectId];
+            if (!existing) {
+              contactToCompanyMap[assoc.toObjectId] = { companyId: item.from.id, isPrimary };
+            } else if (isPrimary && !existing.isPrimary) {
+              // Prefer the company association where this contact is marked Primary.
+              contactToCompanyMap[assoc.toObjectId] = { companyId: item.from.id, isPrimary };
             }
           }
         }
@@ -430,9 +452,11 @@ class HubSpotClient {
         const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
         for (const item of data.results ?? []) {
           const p = item.properties;
+          const assoc = contactToCompanyMap[item.id];
           results.push({
             id: item.id,
-            companyId: contactToCompanyMap[item.id] ?? null,
+            companyId: assoc?.companyId ?? null,
+            isPrimaryForCompany: assoc?.isPrimary ?? false,
             email: p[HUBSPOT_CONTACT_PROPS.email] ?? null,
             firstName: p[HUBSPOT_CONTACT_PROPS.firstName] ?? null,
             lastName: p[HUBSPOT_CONTACT_PROPS.lastName] ?? null,
@@ -1000,6 +1024,83 @@ class HubSpotClient {
     }
 
     logger.info(`Found purchase sources for ${Object.keys(result).length} companies`);
+    return result;
+  }
+
+  /**
+   * For each company id returns the HubSpot owner id of the most recent closed-won deal,
+   * which represents the Sales rep that closed the contract. Falls back to the most recent
+   * deal owner if no closed-won deal is found.
+   */
+  async getSalesOwnersForCompanies(companyHubspotIds: string[]): Promise<Record<string, string>> {
+    if (companyHubspotIds.length === 0) return {};
+    logger.info(`Fetching sales owners for ${companyHubspotIds.length} companies`);
+
+    const BATCH = 100;
+    const companyToDealIds: Record<string, string[]> = {};
+
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string | number }> }> };
+        for (const item of data.results ?? []) {
+          const dealIds = (item.to ?? []).map(a => String(a.toObjectId));
+          if (dealIds.length > 0) companyToDealIds[item.from.id] = dealIds;
+        }
+      } catch (err) {
+        logger.warn(`Sales-owner deal associations batch failed for slice ${i}`, { error: String(err) });
+      }
+    }
+
+    const allDealIds = [...new Set(Object.values(companyToDealIds).flat())];
+    if (allDealIds.length === 0) return {};
+
+    const dealData: Record<string, { ownerId: string | null; closedWon: boolean; closedate: string | null }> = {};
+
+    for (let i = 0; i < allDealIds.length; i += BATCH) {
+      const slice = allDealIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: {
+            inputs: slice.map(id => ({ id })),
+            properties: ['hubspot_owner_id', HUBSPOT_DEAL_PROPS.closedWon, 'closedate'],
+          },
+        });
+        const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
+        for (const deal of data.results ?? []) {
+          dealData[deal.id] = {
+            ownerId: deal.properties['hubspot_owner_id'] || null,
+            closedWon: deal.properties[HUBSPOT_DEAL_PROPS.closedWon] === 'true',
+            closedate: deal.properties.closedate || null,
+          };
+        }
+      } catch (err) {
+        logger.warn(`Sales-owner deals batch/read failed for slice ${i}`, { error: String(err) });
+      }
+    }
+
+    const result: Record<string, string> = {};
+    for (const [companyId, dealIds] of Object.entries(companyToDealIds)) {
+      const deals = dealIds
+        .map(id => ({ id, ...dealData[id] }))
+        .filter(d => d.ownerId);
+
+      const closedWonSorted = deals
+        .filter(d => d.closedWon)
+        .sort((a, b) => (b.closedate ?? '').localeCompare(a.closedate ?? ''));
+
+      const fallbackSorted = deals.sort((a, b) => (b.closedate ?? '').localeCompare(a.closedate ?? ''));
+
+      const ownerId = closedWonSorted[0]?.ownerId ?? fallbackSorted[0]?.ownerId ?? null;
+      if (ownerId) result[companyId] = ownerId;
+    }
+
+    logger.info(`Found sales owners for ${Object.keys(result).length} companies`);
     return result;
   }
 

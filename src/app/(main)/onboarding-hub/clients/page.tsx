@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Search, ChevronRight, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown, Mail, Phone } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail, isAdminEmail, HUBSPOT_OWNERS } from '@/lib/config/owners';
@@ -137,11 +137,100 @@ function RenewalCell({ date }: { date: string | null }) {
   );
 }
 
+type PrimaryContact = {
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+function contactDisplayName(c: PrimaryContact): string {
+  const full = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+  return full || c.email || '--';
+}
+
+function ContactIcons({ contact, size = 'sm' }: { contact: PrimaryContact; size?: 'sm' | 'xs' }) {
+  const iconClass = size === 'sm' ? 'w-3.5 h-3.5' : 'w-3 h-3';
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      {contact.email ? (
+        <a
+          href={`mailto:${contact.email}`}
+          title={contact.email}
+          className="p-1 text-slate-400 hover:text-emerald-600 transition-colors"
+          onClick={e => e.stopPropagation()}
+        >
+          <Mail className={iconClass} />
+        </a>
+      ) : (
+        <span className="p-1 text-slate-200" aria-hidden><Mail className={iconClass} /></span>
+      )}
+      {contact.phone ? (
+        <a
+          href={`tel:${contact.phone}`}
+          title={contact.phone}
+          className="p-1 text-slate-400 hover:text-emerald-600 transition-colors"
+          onClick={e => e.stopPropagation()}
+        >
+          <Phone className={iconClass} />
+        </a>
+      ) : (
+        <span className="p-1 text-slate-200" aria-hidden><Phone className={iconClass} /></span>
+      )}
+    </div>
+  );
+}
+
+function ContactsCell({ contacts }: { contacts: PrimaryContact[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (contacts.length === 0) {
+    return <span className="text-slate-400 text-xs">--</span>;
+  }
+
+  const [first, ...rest] = contacts;
+  const extraCount = rest.length;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-slate-700 truncate max-w-[160px]">
+          {contactDisplayName(first)}
+        </span>
+        <ContactIcons contact={first} />
+        {extraCount > 0 && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
+            title={expanded ? 'Nascondi altri contatti' : `Mostra ${extraCount} altri contatti primary`}
+            className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+          >
+            {expanded ? '−' : `+${extraCount}`}
+          </button>
+        )}
+      </div>
+      {expanded && rest.length > 0 && (
+        <ul className="flex flex-col gap-1 pl-2 border-l-2 border-emerald-100">
+          {rest.map((c, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="text-xs text-slate-600 truncate max-w-[160px]">
+                {contactDisplayName(c)}
+              </span>
+              <ContactIcons contact={c} size="xs" />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function OnboardingClientsPage() {
   const { token } = useAuthStore();
   const { user } = useAuthStore();
   const isAdmin = isAdminEmail(user?.email ?? '');
   const hasOwnerProfile = !!getOwnerByEmail(user?.email ?? '');
+  const isRiccardo = getOwnerByEmail(user?.email ?? '')?.id === '32686457';
 
   const [clients, setClients] = useState<ClientWithHealth[]>([]);
   const [total, setTotal] = useState(0);
@@ -260,18 +349,33 @@ export default function OnboardingClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {([
-                  { label: 'Azienda', key: 'name' },
-                  { label: 'Fonte', key: 'source' },
-                  { label: 'Onboarding', key: 'onboarding' },
-                  { label: 'Giorni in pipeline', key: 'pipeline' },
-                  { label: 'MRR', key: 'mrr' },
-                  { label: 'Piano', key: 'plan' },
-                  { label: 'Company Owner', key: 'owner' },
-                  { label: 'Ticket Support', key: 'support' },
-                  { label: 'Ultimo contatto', key: 'lastContact' },
-                  { label: 'Rinnovo', key: 'renewal' },
-                ] as const).map(col => (
+                {(isRiccardo
+                  ? ([
+                      { label: 'Azienda', key: 'name' },
+                      { label: 'Contatto', key: '' },
+                      { label: 'Piano', key: 'plan' },
+                      { label: 'Rinnovo', key: 'renewal' },
+                      { label: 'Utilizzo', key: 'healthScore' },
+                      { label: 'Onboarding', key: 'onboarding' },
+                      { label: 'Giorni in pipeline', key: 'pipeline' },
+                      { label: 'MRR', key: 'mrr' },
+                      { label: 'Company Owner', key: 'owner' },
+                      { label: 'Ultimo contatto', key: 'lastContact' },
+                      { label: 'Ticket Support', key: 'support' },
+                    ] as const)
+                  : ([
+                      { label: 'Azienda', key: 'name' },
+                      { label: 'Fonte', key: 'source' },
+                      { label: 'Onboarding', key: 'onboarding' },
+                      { label: 'Giorni in pipeline', key: 'pipeline' },
+                      { label: 'MRR', key: 'mrr' },
+                      { label: 'Piano', key: 'plan' },
+                      { label: 'Company Owner', key: 'owner' },
+                      { label: 'Ticket Support', key: 'support' },
+                      { label: 'Ultimo contatto', key: 'lastContact' },
+                      { label: 'Rinnovo', key: 'renewal' },
+                    ] as const)
+                ).map(col => (
                   <th
                     key={col.label}
                     className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide ${col.key ? 'cursor-pointer select-none hover:bg-slate-50 transition-colors' : ''} ${sortBy === col.key ? 'text-emerald-600' : 'text-slate-500'}`}
@@ -280,7 +384,7 @@ export default function OnboardingClientsPage() {
                         setSortDir(d => d === 'asc' ? 'desc' : 'asc');
                       } else {
                         setSortBy(col.key);
-                        setSortDir(['mrr', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support'].includes(col.key) ? 'desc' : 'asc');
+                        setSortDir(['mrr', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support', 'healthScore'].includes(col.key) ? 'desc' : 'asc');
                       }
                       setPage(1);
                     } : undefined}
@@ -312,69 +416,17 @@ export default function OnboardingClientsPage() {
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-24" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-32" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-20" /></td>
+                    {isRiccardo && (
+                      <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
+                    )}
                     <td className="px-4 py-3" />
                   </tr>
                 ))
               ) : clients.length === 0 ? (
-                <tr><td colSpan={11} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={isRiccardo ? 12 : 11} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
-                clients.map(c => (
-                  <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div>
-                        <a
-                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${c.hubspotId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-slate-900 hover:text-emerald-600 transition-colors"
-                        >
-                          {c.name}
-                        </a>
-                        {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {c.purchaseSource ? (
-                        <Badge
-                          variant={c.purchaseSource === 'Product Led' ? 'info' : c.purchaseSource === 'Sales Led' ? 'warning' : c.purchaseSource === 'Partner Led' ? 'success' : 'default'}
-                          size="sm"
-                        >
-                          {c.purchaseSource}
-                        </Badge>
-                      ) : (
-                        <span className="text-slate-400 text-xs">--</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {c.onboardingTicket ? (
-                        <a
-                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${c.onboardingTicket.hubspotId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block hover:bg-emerald-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
-                        >
-                          <OnboardingProgress stageId={c.onboardingTicket.status} />
-                        </a>
-                      ) : (
-                        <span className="text-slate-400 text-xs">--</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {c.onboardingTicket?.activatedAt ? (
-                        <span className="text-sm font-medium text-slate-700">
-                          {differenceInDays(new Date(), new Date(c.onboardingTicket.activatedAt))} gg
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">--</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-700">{formatMrrDisplay(c.mrr)}</td>
-                    <td className="px-4 py-3">
-                      {c.plan ? <Badge variant="outline" size="sm">{c.plan}</Badge> : <span className="text-slate-400">--</span>}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {getOwnerName(c.csOwnerId)}
-                    </td>
+                clients.map(c => {
+                  const supportCell = (
                     <td className="px-4 py-3">
                       {c.supportTicketsCount > 0 && c.latestSupportTicket ? (
                         <a
@@ -394,6 +446,8 @@ export default function OnboardingClientsPage() {
                         <span className="text-slate-400">--</span>
                       )}
                     </td>
+                  );
+                  const lastContactCell = (
                     <td className="px-4 py-3 whitespace-nowrap">
                       {c.lastEngagement ? (
                         <a
@@ -437,16 +491,150 @@ export default function OnboardingClientsPage() {
                         <span className="text-red-500 text-xs font-medium">Nessun contatto</span>
                       )}
                     </td>
+                  );
+                  const renewalCell = (
                     <td className="px-4 py-3 whitespace-nowrap min-w-[120px]">
                       <RenewalCell date={c.renewalDate} />
                     </td>
+                  );
+                  const companyCell = (
+                    <td className="px-4 py-3">
+                      <div>
+                        <a
+                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${c.hubspotId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-slate-900 hover:text-emerald-600 transition-colors"
+                        >
+                          {c.name}
+                        </a>
+                        {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
+                      </div>
+                    </td>
+                  );
+                  const sourceCell = (
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {c.purchaseSource ? (
+                        <Badge
+                          variant={c.purchaseSource === 'Product Led' ? 'info' : c.purchaseSource === 'Sales Led' ? 'warning' : c.purchaseSource === 'Partner Led' ? 'success' : 'default'}
+                          size="sm"
+                        >
+                          {c.purchaseSource}
+                        </Badge>
+                      ) : (
+                        <span className="text-slate-400 text-xs">--</span>
+                      )}
+                    </td>
+                  );
+                  const onboardingCell = (
+                    <td className="px-4 py-3">
+                      {c.onboardingTicket ? (
+                        <a
+                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${c.onboardingTicket.hubspotId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block hover:bg-emerald-50 rounded px-1.5 py-0.5 -mx-1.5 transition-colors"
+                        >
+                          <OnboardingProgress stageId={c.onboardingTicket.status} />
+                        </a>
+                      ) : (
+                        <span className="text-slate-400 text-xs">--</span>
+                      )}
+                    </td>
+                  );
+                  const pipelineCell = (
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {c.onboardingTicket?.activatedAt ? (
+                        <span className="text-sm font-medium text-slate-700">
+                          {differenceInDays(new Date(), new Date(c.onboardingTicket.activatedAt))} gg
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">--</span>
+                      )}
+                    </td>
+                  );
+                  const mrrCell = <td className="px-4 py-3 font-medium text-slate-700">{formatMrrDisplay(c.mrr)}</td>;
+                  const planCell = (
+                    <td className="px-4 py-3">
+                      {c.plan ? <Badge variant="outline" size="sm">{c.plan}</Badge> : <span className="text-slate-400">--</span>}
+                    </td>
+                  );
+                  const ownerCell = (
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {getOwnerName(c.csOwnerId)}
+                    </td>
+                  );
+                  const actionCell = (
                     <td className="px-4 py-3">
                       <Link href={`/clients/${c.id}`} className="p-1 text-slate-400 hover:text-emerald-600 transition-colors">
                         <ChevronRight className="w-4 h-4" />
                       </Link>
                     </td>
-                  </tr>
-                ))
+                  );
+
+                  // Riccardo-only cells
+                  const contactCell = (
+                    <td className="px-4 py-3 align-top">
+                      <ContactsCell contacts={c.primaryContacts} />
+                    </td>
+                  );
+
+                  const hs = c.healthScore;
+                  const hsDot = hs?.status === 'green'
+                    ? 'bg-emerald-500'
+                    : hs?.status === 'yellow'
+                      ? 'bg-amber-500'
+                      : hs?.status === 'red'
+                        ? 'bg-red-500'
+                        : 'bg-slate-300';
+                  const healthCell = (
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {hs ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className={`inline-block w-2 h-2 rounded-full ${hsDot}`} />
+                          <span className="text-sm font-medium text-slate-700">{hs.score}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">--</span>
+                      )}
+                    </td>
+                  );
+
+                  if (isRiccardo) {
+                    return (
+                      <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        {companyCell}
+                        {contactCell}
+                        {planCell}
+                        {renewalCell}
+                        {healthCell}
+                        {onboardingCell}
+                        {pipelineCell}
+                        {mrrCell}
+                        {ownerCell}
+                        {lastContactCell}
+                        {supportCell}
+                        {actionCell}
+                      </tr>
+                    );
+                  }
+
+                  return (
+                    <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      {companyCell}
+                      {sourceCell}
+                      {onboardingCell}
+                      {pipelineCell}
+                      {mrrCell}
+                      {planCell}
+                      {ownerCell}
+                      {supportCell}
+                      {lastContactCell}
+                      {renewalCell}
+                      {actionCell}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

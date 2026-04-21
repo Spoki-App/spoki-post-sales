@@ -24,9 +24,12 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   support: 'c.cs_owner_id',
   owner: 'c.cs_owner_id',
   source: 'c.purchase_source',
+  // Sort by latest health score: requires the lateral join in the outer SELECT,
+  // so callers paginate first then sort the resulting page by score.
+  healthScore: 'hs.score',
 };
 
-const NULLABLE_SORT_COLUMNS = new Set(['mrr', 'plan', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support', 'owner', 'source']);
+const NULLABLE_SORT_COLUMNS = new Set(['mrr', 'plan', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support', 'owner', 'source', 'healthScore']);
 
 export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequest) => {
   try {
@@ -104,6 +107,8 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       last_contact_date: string | null;
       ob_hubspot_id: string | null; ob_pipeline: string | null;
       ob_status: string | null; ob_subject: string | null; ob_activated_at: string | null;
+      primary_contacts: { firstName: string | null; lastName: string | null; email: string | null; phone: string | null }[] | null;
+      hs_score: string | null; hs_status: string | null;
       support_count: string | null;
       st_hubspot_id: string | null; st_status: string | null; st_subject: string | null;
       last_engagement_hubspot_id: string | null; last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
@@ -120,13 +125,34 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
           ob.pipeline AS ob_pipeline,
           ob.status AS ob_status,
           ob.subject AS ob_subject,
-          ob.activated_at AS ob_activated_at
+          ob.activated_at AS ob_activated_at,
+          pc.primary_contacts AS primary_contacts,
+          hs.score AS hs_score,
+          hs.status AS hs_status
         FROM clients c
         LEFT JOIN LATERAL (
           SELECT hubspot_id, pipeline, status, subject, activated_at FROM tickets
           WHERE client_id = c.id AND pipeline = '0'
           ORDER BY opened_at DESC LIMIT 1
         ) ob ON true
+        LEFT JOIN LATERAL (
+          SELECT json_agg(
+            json_build_object(
+              'firstName', first_name,
+              'lastName', last_name,
+              'email', email,
+              'phone', phone
+            )
+            ORDER BY first_name NULLS LAST, last_name NULLS LAST
+          ) AS primary_contacts
+          FROM contacts
+          WHERE client_id = c.id AND is_primary = true
+        ) pc ON true
+        LEFT JOIN LATERAL (
+          SELECT score, status FROM health_scores
+          WHERE client_id = c.id
+          ORDER BY calculated_at DESC LIMIT 1
+        ) hs ON true
         ${where}
         ORDER BY ${orderBy}
         LIMIT ${pageSize} OFFSET ${offset}
@@ -193,6 +219,11 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         subject: r.st_subject,
       } : null,
       lastContactDate: r.last_contact_date,
+      primaryContacts: r.primary_contacts ?? [],
+      healthScore: r.hs_score !== null ? {
+        score: parseInt(r.hs_score, 10),
+        status: r.hs_status as 'green' | 'yellow' | 'red',
+      } : null,
       lastEngagement: r.last_engagement_at ? {
         hubspotId: r.last_engagement_hubspot_id,
         type: r.last_engagement_type,

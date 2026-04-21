@@ -185,15 +185,15 @@ async function syncContacts(contacts: HSContact[]): Promise<number> {
       `INSERT INTO contacts (
         hubspot_id, client_id, email, first_name, last_name,
         phone, job_title, lifecycle_stage, owner_id,
-        last_activity_at, communication_roles, raw_properties, last_synced_at, updated_at
+        last_activity_at, communication_roles, is_primary, raw_properties, last_synced_at, updated_at
       )
       SELECT * FROM UNNEST(
         $1::text[], $2::uuid[], $3::text[], $4::text[], $5::text[],
         $6::text[], $7::text[], $8::text[], $9::text[],
-        $10::timestamptz[], $11::text[], $12::jsonb[], $13::timestamptz[], $14::timestamptz[]
+        $10::timestamptz[], $11::text[], $12::boolean[], $13::jsonb[], $14::timestamptz[], $15::timestamptz[]
       ) AS t(hubspot_id, client_id, email, first_name, last_name,
              phone, job_title, lifecycle_stage, owner_id,
-             last_activity_at, communication_roles, raw_properties, last_synced_at, updated_at)
+             last_activity_at, communication_roles, is_primary, raw_properties, last_synced_at, updated_at)
       ON CONFLICT (hubspot_id) DO UPDATE SET
         client_id           = EXCLUDED.client_id,
         email               = EXCLUDED.email,
@@ -205,6 +205,7 @@ async function syncContacts(contacts: HSContact[]): Promise<number> {
         owner_id            = EXCLUDED.owner_id,
         last_activity_at    = EXCLUDED.last_activity_at,
         communication_roles = EXCLUDED.communication_roles,
+        is_primary          = EXCLUDED.is_primary,
         raw_properties      = EXCLUDED.raw_properties,
         last_synced_at      = NOW(),
         updated_at          = NOW()`,
@@ -220,6 +221,7 @@ async function syncContacts(contacts: HSContact[]): Promise<number> {
         chunk.map(c => c.ownerId),
         chunk.map(c => c.lastActivityDate ? new Date(c.lastActivityDate) : null),
         chunk.map(c => c.communicationRoles.join(';') || null),
+        chunk.map(c => c.isPrimaryForCompany),
         chunk.map(() => JSON.stringify({})),
         chunk.map(() => new Date()),
         chunk.map(() => new Date()),
@@ -414,6 +416,30 @@ async function updateOnboardingStages(): Promise<number> {
   }
 
   return updated;
+}
+
+/**
+ * Persists the Sales owner (HubSpot owner id of the closed-won deal) on each client,
+ * given a map keyed by company HubSpot id.
+ */
+export async function syncSalesOwners(map: Record<string, string>): Promise<number> {
+  const entries = Object.entries(map);
+  if (entries.length === 0) return 0;
+
+  const hubspotIds = entries.map(([id]) => id);
+  const ownerIds = entries.map(([, owner]) => owner);
+
+  const res = await pgQuery(
+    `UPDATE clients AS c
+       SET sales_owner_id = data.owner_id, updated_at = NOW()
+      FROM (
+        SELECT * FROM UNNEST($1::text[], $2::text[]) AS u(hubspot_id, owner_id)
+      ) AS data
+      WHERE c.hubspot_id = data.hubspot_id
+        AND c.sales_owner_id IS DISTINCT FROM data.owner_id`,
+    [hubspotIds, ownerIds]
+  );
+  return res.rowCount ?? 0;
 }
 
 // ─── Single-type exports (for step-by-step sync) ─────────────────────────────

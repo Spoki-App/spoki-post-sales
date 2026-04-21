@@ -51,6 +51,16 @@ export interface ClientWithHealth extends Client {
     callDisposition: string | null;
     callTitle: string | null;
   } | null;
+  primaryContacts: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    phone: string | null;
+  }[];
+  healthScore: {
+    score: number;
+    status: HealthStatus;
+  } | null;
 }
 
 // ─── Contact ──────────────────────────────────────────────────────────────────
