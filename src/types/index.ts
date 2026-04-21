@@ -192,6 +192,14 @@ export interface Alert {
 // ─── Client Goal ─────────────────────────────────────────────────────────────
 export type GoalStatus = 'active' | 'achieved' | 'abandoned';
 export type GoalSource = 'manual' | 'ai_extracted' | 'playbook';
+export type GoalCategory =
+  | 'automation'
+  | 'marketing'
+  | 'sales'
+  | 'customer_service'
+  | 'integration'
+  | 'analytics'
+  | 'other';
 
 export interface ClientGoal {
   id: string;
@@ -200,6 +208,7 @@ export interface ClientGoal {
   description: string | null;
   status: GoalStatus;
   source: GoalSource;
+  category: GoalCategory | null;
   sourceEngagementId: string | null;
   mentionedAt: string | null;
   dueDate: string | null;

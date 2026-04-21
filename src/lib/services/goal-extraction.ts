@@ -41,10 +41,25 @@ function safeMentionedDate(value: string | null | undefined): string | null {
   return d;
 }
 
+type GoalCategory =
+  | 'automation'
+  | 'marketing'
+  | 'sales'
+  | 'customer_service'
+  | 'integration'
+  | 'analytics'
+  | 'other';
+
+const GOAL_CATEGORIES: ReadonlySet<GoalCategory> = new Set([
+  'automation', 'marketing', 'sales', 'customer_service', 'integration', 'analytics', 'other',
+]);
+
 interface ExtractedGoal {
   title: string;
   description: string;
+  category: GoalCategory | null;
   mentionedAt: string | null;
+  dueDate: string | null;
   fromPlaybook: boolean;
   engagementIndex: number | null;
 }
@@ -118,20 +133,37 @@ export async function extractGoalsForClient(clientId: string): Promise<GoalExtra
   const manualGoals = existingGoalsRes.rows.filter(g => g.source === 'manual');
   const aiGoalIds = existingGoalsRes.rows.filter(g => g.source !== 'manual').map(g => g.id);
 
+  // Pull a wider candidate set, deduped, then rank: engagements with substantive text
+  // (note bodies, email text, meeting/call notes) come first, calendar invites and
+  // empty bodies last. Meetings/notes outrank calls; recency breaks ties.
   const engRes = await pgQuery<EngagementRow>(
-    `SELECT e.id, e.type, e.occurred_at, e.title, e.raw_properties
-     FROM engagements e
-     LEFT JOIN contacts co ON e.contact_id = co.id
-     WHERE e.client_id = $1::uuid
-        OR co.client_id = $1::uuid
-        OR EXISTS (
-          SELECT 1 FROM clients c
-          WHERE c.id = $1::uuid
-            AND NULLIF(BTRIM(c.hubspot_id::text), '') IS NOT NULL
-            AND NULLIF(BTRIM(e.company_hubspot_id::text), '') IS NOT NULL
-            AND BTRIM(e.company_hubspot_id::text) = BTRIM(c.hubspot_id::text)
-        )
-     ORDER BY e.occurred_at DESC
+    `WITH cand AS (
+       SELECT DISTINCT ON (e.id) e.id, e.type, e.occurred_at, e.title, e.raw_properties
+       FROM engagements e
+       LEFT JOIN contacts co ON e.contact_id = co.id
+       WHERE e.client_id = $1::uuid
+          OR co.client_id = $1::uuid
+          OR EXISTS (
+            SELECT 1 FROM clients c
+            WHERE c.id = $1::uuid
+              AND NULLIF(BTRIM(c.hubspot_id::text), '') IS NOT NULL
+              AND NULLIF(BTRIM(e.company_hubspot_id::text), '') IS NOT NULL
+              AND BTRIM(e.company_hubspot_id::text) = BTRIM(c.hubspot_id::text)
+          )
+     )
+     SELECT id, type, occurred_at, title, raw_properties
+     FROM cand
+     ORDER BY
+       (length(COALESCE(
+          raw_properties->>'hs_note_body',
+          raw_properties->>'hs_email_text',
+          raw_properties->>'hs_meeting_body',
+          raw_properties->>'hs_call_body',
+          raw_properties->>'hs_body_preview',
+          ''
+        )) > 80) DESC,
+       CASE type WHEN 'NOTE' THEN 1 WHEN 'MEETING' THEN 2 WHEN 'EMAIL' THEN 3 WHEN 'INCOMING_EMAIL' THEN 3 ELSE 4 END,
+       occurred_at DESC
      LIMIT 80`,
     [clientId]
   );
@@ -145,14 +177,23 @@ export async function extractGoalsForClient(clientId: string): Promise<GoalExtra
   const playbooks: string[] = [];
   const otherEngagements: string[] = [];
 
+  // HubSpot calendar-invite boilerplate that Meeting bodies often contain: it adds no
+  // semantic value for goal extraction but pads the prompt with noise.
+  const CAL_INVITE_NOISE_RE = /(devi apportare modifiche|ripianifica|annulla|reschedule|cancel meeting)/i;
+  const MIN_USEFUL_LEN = 40;
+
   engagements.forEach((e, i) => {
     const date = new Date(e.occurred_at).toISOString().slice(0, 10);
-    let content = engagementTextContent(e.type, e.title, e.raw_properties).trim();
-    if (!content) content = e.title?.trim() || '';
-    if (!content) {
-      content =
-        '(Nessun testo disponibile: le proprietà HubSpot potrebbero non essere nella sync o il corpo è vuoto.)';
+    const body = engagementTextContent(e.type, e.title, e.raw_properties).trim();
+    const title = e.title?.trim() || '';
+
+    let content = body || title;
+    if (!content) return;
+
+    if (e.type === 'MEETING' && body && CAL_INVITE_NOISE_RE.test(body) && body.length < 600) {
+      content = title;
     }
+    if (content.length < MIN_USEFUL_LEN && content === title) return;
 
     const hasStructuredFields = content.includes('##') || content.includes('**') || content.length > 500;
 
@@ -165,6 +206,10 @@ export async function extractGoalsForClient(clientId: string): Promise<GoalExtra
   });
 
   const contextLines = playbooks.length + otherEngagements.length;
+  if (contextLines === 0) {
+    logger.info('No usable engagement content for client after filtering', { clientId, engagementRows: engagements.length });
+    return { inserted: 0, engagementRows: engagements.length, contextLines: 0, hint: 'ai_empty' };
+  }
 
   const manualGoalsList = manualGoals.length > 0
     ? manualGoals.map(g => `- "${g.title}"`).join('\n')
@@ -172,7 +217,29 @@ export async function extractGoalsForClient(clientId: string): Promise<GoalExtra
 
   const maxNewGoals = Math.max(0, 5 - manualGoals.length);
 
-  const prompt = `You are a Customer Success analyst at Spoki. Analyze the following engagement data for a client and extract concrete OBJECTIVES / GOALS that were agreed upon, discussed, or implied during interactions.
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `Sei un Customer Success analyst di Spoki (piattaforma WhatsApp Business per marketing, vendita, automazione e customer care). Analizza gli engagement con un cliente e estrai gli OBIETTIVI DI BUSINESS che il cliente vuole raggiungere usando Spoki.
+
+DEFINIZIONE DI OBIETTIVO (cosa estrarre)
+Un obiettivo descrive UN RISULTATO che il cliente vuole ottenere per il suo business attraverso Spoki. Deve essere un caso d'uso concreto, non un'attivita' di setup tecnico.
+
+ESEMPI di OBIETTIVI VALIDI da estrarre:
+- "Avere un'automazione che risponda ai clienti negli orari non lavorativi"
+- "Recuperare i carrelli abbandonati con un flusso WhatsApp automatico"
+- "Inviare promemoria appuntamenti via WhatsApp per ridurre i no-show"
+- "Lanciare una campagna broadcast mensile sui nuovi prodotti"
+- "Gestire le richieste di assistenza in chat con un bot di primo livello"
+- "Qualificare i lead da Meta Ads via WhatsApp prima di passarli al sales"
+- "Raccogliere feedback post-acquisto via WhatsApp"
+- "Integrare WhatsApp con il CRM per tracciare le conversazioni"
+
+NON ESTRARRE (sono attivita' di setup, non obiettivi):
+- "Procurarsi un numero di telefono" / "scegliere il numero da collegare"
+- "Avere un Meta Business Manager funzionante" / "verificare il dominio"
+- "Prenotare la chiamata di attivazione" / "completare l'onboarding"
+- "Pagare il piano" / "firmare il contratto"
+- Frasi generiche tipo "migliorare la customer experience" senza un caso d'uso concreto.
+- Problemi tecnici o ticket di supporto.
 
 === STRUCTURED PLAYBOOK NOTES ===
 ${playbooks.length > 0 ? playbooks.join('\n\n---\n\n') : '(none)'}
@@ -180,25 +247,41 @@ ${playbooks.length > 0 ? playbooks.join('\n\n---\n\n') : '(none)'}
 === OTHER ENGAGEMENTS (calls, emails, meetings) ===
 ${otherEngagements.length > 0 ? otherEngagements.join('\n\n---\n\n') : '(none)'}
 
-=== EXISTING MANUAL GOALS (do NOT duplicate these) ===
+=== OBIETTIVI MANUALI ESISTENTI (NON duplicarli) ===
 ${manualGoalsList}
 
-Reply ONLY with valid JSON (no markdown, no backticks):
+CATEGORIE valide (scegline UNA per ogni obiettivo):
+- "automation": flussi automatici, chatbot, risposte automatiche, trigger
+- "marketing": campagne broadcast, promozioni, newsletter, lead gen
+- "sales": qualificazione lead, conversione, recupero carrelli, upsell
+- "customer_service": assistenza clienti, ticketing, FAQ in chat
+- "integration": collegamenti CRM/e-commerce/Meta Ads/altri sistemi
+- "analytics": reportistica, metriche, tracciamento conversioni
+- "other": tutto il resto che e' un obiettivo di business ma non rientra sopra
+
+Rispondi SOLO con JSON valido (no markdown, no backtick):
 [
-  {"title": "short goal title (max 80 chars)", "description": "1-2 sentence description of the goal and context", "mentionedAt": "YYYY-MM-DD", "fromPlaybook": true/false, "engagementIndex": N or null}
+  {
+    "title": "titolo breve dell'obiettivo (max 80 caratteri, in italiano)",
+    "description": "1-2 frasi che spiegano il caso d'uso e il contesto in cui e' emerso",
+    "category": "automation|marketing|sales|customer_service|integration|analytics|other",
+    "mentionedAt": "YYYY-MM-DD oppure null",
+    "dueDate": "YYYY-MM-DD oppure null",
+    "fromPlaybook": true|false,
+    "engagementIndex": N oppure null
+  }
 ]
 
-Rules:
-- Extract up to ${maxNewGoals} goals maximum. If there are already 5 or more manual goals, return [].
-- Each goal must be clearly distinct from all others. Do NOT create similar or overlapping goals.
-- Do NOT duplicate or rephrase any of the existing manual goals listed above.
-- Goals should be things like: feature adoption targets, usage milestones, onboarding checkpoints, integration goals, training objectives, campaign launch targets.
-- Do NOT extract generic platitudes like "improve customer satisfaction".
-- mentionedAt is the date (YYYY-MM-DD) when this goal was first discussed or agreed upon, taken from the engagement timeline dates. Use the earliest date where this goal appears.
-- fromPlaybook should be true only if the goal comes from a structured playbook note.
-- engagementIndex is the index number from the engagement (e.g., from "[Call 5]" it would be 5). Use null if unclear.
-- If no meaningful goals can be extracted, return an empty array [].
-- All text must be in Italian.`;
+REGOLE:
+- Estrai al massimo ${maxNewGoals} obiettivi. Se non ci sono obiettivi di business validi, restituisci [].
+- Ogni obiettivo deve essere chiaramente distinto. Niente duplicati o rifrasare.
+- NON duplicare gli obiettivi manuali esistenti elencati sopra.
+- "mentionedAt" = data (YYYY-MM-DD) della prima volta che l'obiettivo emerge negli engagement. Se non chiara, null.
+- "dueDate" = scadenza/deadline esplicita menzionata dal cliente o concordata (es. "entro fine mese", "per il Black Friday"). Se nessuna scadenza e' menzionata, null. Calcola la data assoluta partendo da oggi (${today}) quando il testo usa riferimenti relativi (es. "entro 2 settimane" -> aggiungi 14 giorni a oggi).
+- "category" e' obbligatoria. Scegli quella piu' rappresentativa tra le 7 sopra.
+- "fromPlaybook" = true solo se l'obiettivo viene da una nota playbook strutturata.
+- "engagementIndex" = numero indice dall'etichetta dell'engagement (es. da "[Call 5]" -> 5). Null se incerto.
+- Tutto il testo (title, description) DEVE essere in italiano.`;
 
   const rawJson = await generateJson(prompt);
 
@@ -235,17 +318,27 @@ Rules:
     const mentionedAt = safeMentionedDate(
       typeof goal.mentionedAt === 'string' ? goal.mentionedAt : goal.mentionedAt != null ? String(goal.mentionedAt) : null
     );
+    const dueDate = safeMentionedDate(
+      typeof goal.dueDate === 'string' ? goal.dueDate : goal.dueDate != null ? String(goal.dueDate) : null
+    );
+    const rawCat = (goal as { category?: unknown }).category;
+    const category: GoalCategory | null =
+      typeof rawCat === 'string' && GOAL_CATEGORIES.has(rawCat as GoalCategory)
+        ? (rawCat as GoalCategory)
+        : null;
 
     const res = await pgQuery<{ id: string }>(
-      `INSERT INTO client_goals (client_id, title, description, status, source, source_engagement_id, mentioned_at, created_by)
-       VALUES ($1, $2, $3, 'active', $4, $5, $6, 'ai')
+      `INSERT INTO client_goals (client_id, title, description, status, source, source_engagement_id, mentioned_at, due_date, category, created_by)
+       VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, 'ai')
        ON CONFLICT (client_id, title) DO UPDATE SET
          description = EXCLUDED.description,
          source = EXCLUDED.source,
          source_engagement_id = EXCLUDED.source_engagement_id,
-         mentioned_at = EXCLUDED.mentioned_at
+         mentioned_at = EXCLUDED.mentioned_at,
+         due_date = EXCLUDED.due_date,
+         category = EXCLUDED.category
        RETURNING id`,
-      [clientId, goal.title.slice(0, 200), goal.description || null, source, engagementId, mentionedAt]
+      [clientId, goal.title.slice(0, 200), goal.description || null, source, engagementId, mentionedAt, dueDate, category]
     );
     if (res.rows.length > 0) inserted++;
   }

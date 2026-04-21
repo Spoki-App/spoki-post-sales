@@ -10,11 +10,12 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
 
     const res = await pgQuery<{
       id: string; client_id: string; title: string; description: string | null;
-      status: string; source: string; source_engagement_id: string | null;
+      status: string; source: string; category: string | null;
+      source_engagement_id: string | null;
       mentioned_at: string | null; due_date: string | null;
       created_by: string | null; created_at: string; updated_at: string;
     }>(
-      `SELECT id, client_id, title, description, status, source,
+      `SELECT id, client_id, title, description, status, source, category,
               source_engagement_id, mentioned_at, due_date,
               created_by, created_at, updated_at
        FROM client_goals
@@ -34,6 +35,7 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
         description: r.description,
         status: r.status,
         source: r.source,
+        category: r.category,
         sourceEngagementId: r.source_engagement_id,
         mentionedAt: r.mentioned_at,
         dueDate: r.due_date,
