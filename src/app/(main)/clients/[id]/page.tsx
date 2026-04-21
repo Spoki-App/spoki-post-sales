@@ -14,10 +14,11 @@ import { getOwnerName } from '@/lib/config/owners';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
 import { EmailGeneratorModal } from '@/components/ui/EmailGeneratorModal';
 import { QbrModal } from '@/components/ui/QbrModal';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation, Target } from 'lucide-react';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation, Target, ChevronDown, ChevronUp } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Client, ClientGoal, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
+import type { Client, ClientGoal, ClientDeal, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
+import { TrendingUp, DollarSign } from 'lucide-react';
 import { formatMrrDisplay } from '@/lib/format/mrr';
 import { MrrTrendChart } from '@/components/dashboard/MrrTrendChart';
 import { PaymentStatusCard } from '@/components/dashboard/PaymentStatusCard';
@@ -30,13 +31,11 @@ type ClientWithStage = Client & {
   onboardingStageType?: string | null;
 };
 
-type Tab = 'activities' | 'tickets' | 'onboarding' | 'goals' | 'tasks' | 'contacts' | 'financials';
+type Tab = 'activities' | 'tickets' | 'tasks' | 'contacts' | 'financials';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'activities', label: 'Attività' },
   { id: 'tickets', label: 'Ticket' },
-  { id: 'onboarding', label: 'Onboarding' },
-  { id: 'goals', label: 'Obiettivi' },
   { id: 'tasks', label: 'Task' },
   { id: 'contacts', label: 'Contatti' },
   { id: 'financials', label: 'Dati Finanziari' },
@@ -102,6 +101,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [goalsLoaded, setGoalsLoaded] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [goalsError, setGoalsError] = useState<string | null>(null);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalDesc, setNewGoalDesc] = useState('');
@@ -109,6 +109,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [goalExtractMessage, setGoalExtractMessage] = useState<string | null>(null);
+  const [salesDeals, setSalesDeals] = useState<ClientDeal[]>([]);
+  const [upsellingDeals, setUpsellingDeals] = useState<ClientDeal[]>([]);
+  const [dealTab, setDealTab] = useState<'sales' | 'upselling'>('sales');
+  const [onboardingExpanded, setOnboardingExpanded] = useState(true);
 
   const loadAccountBrief = useCallback(async () => {
     if (!token || !id) return;
@@ -135,6 +139,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setLoading(false);
       }
     })();
+    clientsApi.getDeals(token, id).then(r => {
+      if (r.data) {
+        setSalesDeals(r.data.sales);
+        setUpsellingDeals(r.data.upselling);
+      }
+    }).catch(() => {});
+    clientsApi.getOnboardingHistory(token, id).then(r => setOnboardingHistory(r.data ?? null)).catch(() => {});
+    onboardingApi.getProgress(token, id).then(r => setOnboarding(r.data ?? null)).catch(() => {});
+    clientsApi.getGoals(token, id).then(r => { setGoals(r.data ?? []); setGoalsLoaded(true); }).catch(() => {});
+    clientsApi.getEngagements(token, id).then(r => setEngagements(r.data ?? [])).catch(() => {});
   }, [token, id]);
 
   useEffect(() => {
@@ -152,26 +166,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     if (tab === 'tickets' && tickets.length === 0) {
       clientsApi.getTickets(token, id).then(r => setTickets(r.data ?? []));
     }
-    if (tab === 'activities' && engagements.length === 0) {
-      clientsApi.getEngagements(token, id).then(r => setEngagements(r.data ?? []));
-    }
     if (tab === 'contacts' && contacts.length === 0) {
       clientsApi.getContacts(token, id).then(r => setContacts(r.data ?? []));
     }
-    if (tab === 'tasks' && hubspotTasks.length === 0) {
-      clientsApi.getEngagements(token, id).then(r => {
-        const all = r.data ?? [];
-        setHubspotTasks(all.filter(e => e.type === 'TASK'));
-      });
-    }
-    if (tab === 'onboarding' && !onboardingHistory) {
-      clientsApi.getOnboardingHistory(token, id).then(r => setOnboardingHistory(r.data ?? null));
-    }
-    if (tab === 'onboarding' && !onboarding) {
-      onboardingApi.getProgress(token, id).then(r => setOnboarding(r.data ?? null));
-    }
-    if ((tab === 'goals' || tab === 'onboarding') && !goalsLoaded) {
-      clientsApi.getGoals(token, id).then(r => { setGoals(r.data ?? []); setGoalsLoaded(true); });
+    if (tab === 'tasks' && hubspotTasks.length === 0 && engagements.length > 0) {
+      setHubspotTasks(engagements.filter(e => e.type === 'TASK'));
     }
   }, [tab, token, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -188,6 +187,97 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   }
 
   const renewalDays = client.renewalDate ? differenceInDays(new Date(client.renewalDate), new Date()) : null;
+
+  function renderDealList(deals: ClientDeal[]) {
+    if (deals.length === 0) {
+      return <p className="text-sm text-slate-400 text-center py-4">Nessun deal in questa pipeline.</p>;
+    }
+    return (
+      <div className="space-y-3">
+        {deals.map(d => {
+          const progress = d.totalStages > 1 ? Math.round(((d.stageOrder) / (d.totalStages - 1)) * 100) : 0;
+          const barColor = d.isWon ? 'bg-emerald-500' : d.isClosed ? 'bg-red-400' : 'bg-blue-500';
+          return (
+            <a
+              key={d.id}
+              href={`https://app-eu1.hubspot.com/contacts/47964451/deal/${d.hubspotId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="block border border-slate-200 rounded-lg p-3 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900 truncate">{d.dealName ?? 'Deal senza nome'}</p>
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${
+                      d.isWon ? 'bg-emerald-100 text-emerald-700'
+                      : d.isClosed ? 'bg-red-100 text-red-700'
+                      : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {d.stageLabel}
+                    </span>
+                    {d.daysInStage != null && !d.isClosed && (
+                      <span className="text-xs text-slate-400">{d.daysInStage} gg nello stage</span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  {d.amount != null && (
+                    <p className="text-sm font-semibold text-slate-900">
+                      {d.amount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                    </p>
+                  )}
+                  {d.closeDate && (
+                    <p className="text-xs text-slate-400">
+                      Chiusura: {format(new Date(d.closeDate), 'd MMM yyyy', { locale: it })}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                <div className={`${barColor} h-1.5 rounded-full transition-all`} style={{ width: `${d.isClosed ? 100 : progress}%` }} />
+              </div>
+              {d.ownerName && (
+                <p className="text-xs text-slate-400 mt-1.5">Owner: {d.ownerName}</p>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const hasOnboarding = onboardingHistory && onboardingHistory.steps.length > 0;
+  const engagementMap = new Map(engagements.map(e => [e.id, e]));
+
+  function getGoalBinDate(g: ClientGoal): Date | null {
+    if (g.sourceEngagementId) {
+      const eng = engagementMap.get(g.sourceEngagementId);
+      if (eng) return new Date(eng.occurredAt);
+    }
+    if (g.mentionedAt) return new Date(g.mentionedAt);
+    return null;
+  }
+
+  const stepperGoalIds = new Set<string>();
+  if (hasOnboarding) {
+    onboardingHistory.steps.forEach((step, i) => {
+      const stepDate = step.completedAt ? new Date(step.completedAt) : null;
+      const nextCompletedStep = onboardingHistory.steps.slice(i + 1).find(s => s.completedAt);
+      const nextDate = nextCompletedStep?.completedAt ? new Date(nextCompletedStep.completedAt) : null;
+      if (stepDate) {
+        goals.forEach(g => {
+          if (stepperGoalIds.has(g.id)) return;
+          const gDate = getGoalBinDate(g);
+          if (!gDate) return;
+          if (gDate >= stepDate && (!nextDate || gDate <= nextDate)) {
+            stepperGoalIds.add(g.id);
+          }
+        });
+      }
+    });
+  }
+  const orphanGoals = goals.filter(g => !stepperGoalIds.has(g.id));
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -310,6 +400,479 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </p>
         </Card>
       </div>
+
+      {/* Deal Pipelines */}
+      {(salesDeals.length > 0 || upsellingDeals.length > 0) && (
+        <Card className="mb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex gap-1 bg-slate-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setDealTab('sales')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dealTab === 'sales' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <span className="inline-flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5" />Sales Pipeline ({salesDeals.length})</span>
+              </button>
+              <button
+                onClick={() => setDealTab('upselling')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dealTab === 'upselling' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <span className="inline-flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" />Upselling ({upsellingDeals.length})</span>
+              </button>
+            </div>
+          </div>
+          {renderDealList(dealTab === 'sales' ? salesDeals : upsellingDeals)}
+        </Card>
+      )}
+
+      {/* Onboarding card */}
+      {onboardingHistory && onboardingHistory.steps.length > 0 && (() => {
+        const completed = onboardingHistory.steps.filter(s => s.completedAt).length;
+        const total = onboardingHistory.steps.length;
+        const pct = Math.round((completed / total) * 100);
+        const isComplete = onboardingHistory.currentStageId === '1005076483';
+        return (
+          <Card className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <CardTitle>Progresso onboarding</CardTitle>
+                {onboardingHistory.ticketHubspotId && (
+                  <a
+                    href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${onboardingHistory.ticketHubspotId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-emerald-600 hover:text-emerald-800"
+                  >
+                    Apri ticket
+                  </a>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {onboardingHistory.currentStage && (
+                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
+                    {onboardingHistory.currentStage}
+                  </span>
+                )}
+                <span className={`text-sm font-semibold ${isComplete ? 'text-emerald-600' : 'text-slate-700'}`}>{pct}%</span>
+                <button
+                  onClick={() => setOnboardingExpanded(!onboardingExpanded)}
+                  className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  {onboardingExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div className={`h-2 bg-slate-100 rounded-full ${onboardingExpanded ? 'mb-6' : ''} overflow-hidden`}>
+              <div
+                className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-green-500'}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            {onboardingExpanded && (() => {
+              const renderedGoalIds = new Set<string>();
+              return (
+              <>
+                <ul className="space-y-1">
+                  {onboardingHistory.steps.map((step, i) => {
+                    const done = !!step.completedAt;
+                    const isCurrent = step.id === onboardingHistory.currentStageId;
+
+                    const stepDate = step.completedAt ? new Date(step.completedAt) : null;
+                    const nextCompletedStep = onboardingHistory.steps.slice(i + 1).find(s => s.completedAt);
+                    const nextDate = nextCompletedStep?.completedAt ? new Date(nextCompletedStep.completedAt) : null;
+
+                    const stepGoals = stepDate
+                      ? goals
+                          .filter(g => {
+                            if (renderedGoalIds.has(g.id)) return false;
+                            const gDate = getGoalBinDate(g);
+                            if (!gDate) return false;
+                            if (gDate < stepDate) return false;
+                            if (nextDate && gDate > nextDate) return false;
+                            return true;
+                          })
+                          .sort((a, b) => (getGoalBinDate(a)?.getTime() ?? 0) - (getGoalBinDate(b)?.getTime() ?? 0))
+                      : [];
+                    stepGoals.forEach(g => renderedGoalIds.add(g.id));
+
+                    return (
+                      <li key={step.id}>
+                        <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-emerald-50' : ''}`}>
+                          <div className="flex items-center justify-center w-6">
+                            {done ? (
+                              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            ) : isCurrent ? (
+                              <div className="w-5 h-5 rounded-full border-2 border-emerald-500 bg-emerald-500 flex items-center justify-center">
+                                <div className="w-2 h-2 rounded-full bg-white" />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-full border-2 border-slate-200" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
+                              {step.label}
+                            </p>
+                          </div>
+                          {step.completedAt && (
+                            <p className="text-xs text-slate-400 shrink-0">
+                              {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
+                            </p>
+                          )}
+                        </div>
+                        {stepGoals.length > 0 && (
+                          <div className="ml-12 mt-1 mb-2 space-y-1">
+                            {stepGoals.map(g => (
+                              <div key={g.id} className="flex items-center gap-2 text-xs">
+                                <button
+                                  onClick={async () => {
+                                    if (!token) return;
+                                    const newStatus = g.status === 'achieved' ? 'active' : 'achieved';
+                                    await clientsApi.updateGoal(token, id, { goalId: g.id, status: newStatus });
+                                    const r = await clientsApi.getGoals(token, id);
+                                    setGoals(r.data ?? []);
+                                  }}
+                                  className="shrink-0"
+                                >
+                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                                    g.status === 'achieved'
+                                      ? 'bg-emerald-500 border-emerald-500'
+                                      : 'border-slate-300 hover:border-emerald-400'
+                                  }`}>
+                                    {g.status === 'achieved' && (
+                                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                </button>
+                                <span className={g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-600'}>
+                                  {g.title}
+                                </span>
+                                {g.mentionedAt && (
+                                  <span className="text-slate-400">
+                                    {format(new Date(g.mentionedAt), 'd MMM yyyy', { locale: it })}
+                                  </span>
+                                )}
+                                {g.sourceEngagementId && engagementMap.has(g.sourceEngagementId) && (() => {
+                                  const eng = engagementMap.get(g.sourceEngagementId!)!;
+                                  const typeLabel = eng.noteCategory ?? ({ CALL: 'Call', EMAIL: 'Email', INCOMING_EMAIL: 'Email', FORWARDED_EMAIL: 'Email', MEETING: 'Meeting', NOTE: 'Nota', TASK: 'Task' }[eng.type] ?? eng.type);
+                                  const ownerName = getOwnerName(eng.ownerId);
+                                  return (
+                                    <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                      {typeLabel}{ownerName !== '—' ? ` di ${ownerName}` : ''} - {format(new Date(eng.occurredAt), 'd MMM', { locale: it })}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {onboardingHistory.issues && onboardingHistory.issues.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    <p className="text-sm font-medium text-slate-900 mb-2">Problemi riscontrati</p>
+                    <ul className="space-y-2">
+                      {onboardingHistory.issues.map((issue, i) => (
+                        <li key={i} className="flex items-center justify-between">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                            {issue.label}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {format(new Date(issue.occurredAt), 'd MMM yyyy', { locale: it })}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Goal management toolbar */}
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-slate-900">Gestione obiettivi</p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={async () => {
+                          if (!token || extracting) return;
+                          setExtracting(true);
+                          setGoalsError(null);
+                          try {
+                            await clientsApi.extractGoals(token, id);
+                            const r = await clientsApi.getGoals(token, id);
+                            setGoals(r.data ?? []);
+                          } catch (err) {
+                            setGoalsError(err instanceof Error ? err.message : 'Estrazione fallita.');
+                          } finally { setExtracting(false); }
+                        }}
+                        disabled={extracting}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                      >
+                        {extracting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                        Estrai
+                      </button>
+                      <button
+                        onClick={() => setShowAddGoal(!showAddGoal)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+                      >
+                        + Aggiungi
+                      </button>
+                      {goals.length > 0 && (
+                        <button
+                          onClick={async () => {
+                            if (!token || syncing) return;
+                            setSyncing(true);
+                            setGoalsError(null);
+                            try { await clientsApi.syncGoalsToHubspot(token, id); }
+                            catch (err) { setGoalsError(err instanceof Error ? err.message : 'Sincronizzazione fallita.'); }
+                            finally { setSyncing(false); }
+                          }}
+                          disabled={syncing}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        >
+                          {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3 text-amber-500" />}
+                          Sync
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {goalsError && (
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg bg-red-50 text-red-700 border border-red-200 mb-3">
+                      <span>{goalsError}</span>
+                      <button onClick={() => setGoalsError(null)} className="shrink-0 text-red-400 hover:text-red-600">&times;</button>
+                    </div>
+                  )}
+
+                  {showAddGoal && (
+                    <div className="space-y-2 mb-3 p-3 bg-slate-50 rounded-lg">
+                      <input
+                        type="text"
+                        placeholder="Titolo obiettivo"
+                        value={newGoalTitle}
+                        onChange={e => setNewGoalTitle(e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <textarea
+                        placeholder="Descrizione (opzionale)"
+                        value={newGoalDesc}
+                        onChange={e => setNewGoalDesc(e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            if (!token || !newGoalTitle.trim()) return;
+                            await clientsApi.createGoal(token, id, { title: newGoalTitle.trim(), description: newGoalDesc.trim() || undefined });
+                            const r = await clientsApi.getGoals(token, id);
+                            setGoals(r.data ?? []);
+                            setNewGoalTitle('');
+                            setNewGoalDesc('');
+                            setShowAddGoal(false);
+                          }}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                        >
+                          Salva
+                        </button>
+                        <button
+                          onClick={() => { setShowAddGoal(false); setNewGoalTitle(''); setNewGoalDesc(''); }}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                        >
+                          Annulla
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+              );
+            })()}
+          </Card>
+        );
+      })()}
+
+      {/* Goals card -- orphan-only when onboarding exists, full when no onboarding */}
+      {(!hasOnboarding || orphanGoals.length > 0) && (() => {
+        const displayGoals = hasOnboarding ? orphanGoals : goals;
+        return (
+          <Card className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-emerald-600" />
+                <CardTitle>{hasOnboarding ? 'Altri obiettivi' : 'Obiettivi'}</CardTitle>
+                {displayGoals.length > 0 && (
+                  <span className="text-xs text-slate-400">
+                    {displayGoals.filter(g => g.status === 'achieved').length} completati, {displayGoals.filter(g => g.status === 'active').length} attivi su {displayGoals.length}
+                  </span>
+                )}
+              </div>
+              {!hasOnboarding && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={async () => {
+                      if (!token || extracting) return;
+                      setExtracting(true);
+                      setGoalsError(null);
+                      try {
+                        await clientsApi.extractGoals(token, id);
+                        const r = await clientsApi.getGoals(token, id);
+                        setGoals(r.data ?? []);
+                      } catch (err) {
+                        setGoalsError(err instanceof Error ? err.message : 'Estrazione fallita.');
+                      } finally { setExtracting(false); }
+                    }}
+                    disabled={extracting}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  >
+                    {extracting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Estrai
+                  </button>
+                  <button
+                    onClick={() => setShowAddGoal(!showAddGoal)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+                  >
+                    + Aggiungi
+                  </button>
+                  {goals.length > 0 && (
+                    <button
+                      onClick={async () => {
+                        if (!token || syncing) return;
+                        setSyncing(true);
+                        setGoalsError(null);
+                        try { await clientsApi.syncGoalsToHubspot(token, id); }
+                        catch (err) { setGoalsError(err instanceof Error ? err.message : 'Sincronizzazione fallita.'); }
+                        finally { setSyncing(false); }
+                      }}
+                      disabled={syncing}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                    >
+                      {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3 text-amber-500" />}
+                      Sync
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {!hasOnboarding && goalsError && (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs rounded-lg bg-red-50 text-red-700 border border-red-200 mb-3">
+                <span>{goalsError}</span>
+                <button onClick={() => setGoalsError(null)} className="shrink-0 text-red-400 hover:text-red-600">&times;</button>
+              </div>
+            )}
+
+            {!hasOnboarding && showAddGoal && (
+              <div className="space-y-2 mb-3 p-3 bg-slate-50 rounded-lg">
+                <input
+                  type="text"
+                  placeholder="Titolo obiettivo"
+                  value={newGoalTitle}
+                  onChange={e => setNewGoalTitle(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <textarea
+                  placeholder="Descrizione (opzionale)"
+                  value={newGoalDesc}
+                  onChange={e => setNewGoalDesc(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!token || !newGoalTitle.trim()) return;
+                      await clientsApi.createGoal(token, id, { title: newGoalTitle.trim(), description: newGoalDesc.trim() || undefined });
+                      const r = await clientsApi.getGoals(token, id);
+                      setGoals(r.data ?? []);
+                      setNewGoalTitle('');
+                      setNewGoalDesc('');
+                      setShowAddGoal(false);
+                    }}
+                    className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    Salva
+                  </button>
+                  <button
+                    onClick={() => { setShowAddGoal(false); setNewGoalTitle(''); setNewGoalDesc(''); }}
+                    className="px-2.5 py-1 text-xs font-medium rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    Annulla
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {displayGoals.length === 0 ? (
+              <p className="text-slate-400 text-xs text-center py-4">
+                Nessun obiettivo. Usa &quot;Estrai&quot; per analizzare gli engagement con l&apos;AI.
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {displayGoals.map(g => (
+                  <li key={g.id} className="flex items-center gap-2 py-1">
+                    <button
+                      onClick={async () => {
+                        if (!token) return;
+                        const newStatus = g.status === 'achieved' ? 'active' : 'achieved';
+                        await clientsApi.updateGoal(token, id, { goalId: g.id, status: newStatus });
+                        const r = await clientsApi.getGoals(token, id);
+                        setGoals(r.data ?? []);
+                      }}
+                      className="shrink-0"
+                    >
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                        g.status === 'achieved'
+                          ? 'bg-emerald-500 border-emerald-500'
+                          : g.status === 'abandoned'
+                            ? 'border-slate-200 bg-slate-50'
+                            : 'border-slate-300 hover:border-emerald-400'
+                      }`}>
+                        {g.status === 'achieved' && (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+                    <span className={`text-sm flex-1 min-w-0 truncate ${
+                      g.status === 'achieved' ? 'line-through text-slate-400'
+                      : g.status === 'abandoned' ? 'line-through text-slate-300'
+                      : 'text-slate-700'
+                    }`}>
+                      {g.title}
+                    </span>
+                    {g.sourceEngagementId && engagementMap.has(g.sourceEngagementId) && (() => {
+                      const eng = engagementMap.get(g.sourceEngagementId!)!;
+                      const typeLabel = eng.noteCategory ?? ({ CALL: 'Call', EMAIL: 'Email', INCOMING_EMAIL: 'Email', FORWARDED_EMAIL: 'Email', MEETING: 'Meeting', NOTE: 'Nota', TASK: 'Task' }[eng.type] ?? eng.type);
+                      const ownerName = getOwnerName(eng.ownerId);
+                      return (
+                        <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                          {typeLabel}{ownerName !== '—' ? ` di ${ownerName}` : ''} - {format(new Date(eng.occurredAt), 'd MMM', { locale: it })}
+                        </span>
+                      );
+                    })()}
+                    {g.mentionedAt && (
+                      <span className="text-xs text-slate-400 shrink-0">
+                        {format(new Date(g.mentionedAt), 'd MMM yyyy', { locale: it })}
+                      </span>
+                    )}
+                    <Badge variant="default" size="sm">
+                      {g.source === 'playbook' ? 'Playbook' : g.source === 'ai_extracted' ? 'AI' : 'Manuale'}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* AI Analysis */}
       {aiAnalysis && (
@@ -483,364 +1046,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         </Card>
       )}
 
-      {tab === 'onboarding' && (
-        <div className="space-y-4">
-          <Card>
-            {!onboardingHistory || onboardingHistory.steps.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-slate-400 text-sm">Nessun ticket di onboarding trovato per questo cliente.</p>
-              </div>
-            ) : (() => {
-              const completed = onboardingHistory.steps.filter(s => s.completedAt).length;
-              const total = onboardingHistory.steps.length;
-              const pct = Math.round((completed / total) * 100);
-              const isComplete = onboardingHistory.currentStageId === '1005076483';
-
-              return (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <CardTitle>Progresso onboarding</CardTitle>
-                      {onboardingHistory.ticketHubspotId && (
-                        <a
-                          href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-5/${onboardingHistory.ticketHubspotId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-emerald-600 hover:text-emerald-800"
-                        >
-                          Apri ticket
-                        </a>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {onboardingHistory.currentStage && (
-                        <span className="text-xs text-slate-500">
-                          Stato attuale: <span className="font-medium text-slate-700">{onboardingHistory.currentStage}</span>
-                        </span>
-                      )}
-                      <span className={`text-sm font-semibold ${isComplete ? 'text-emerald-600' : 'text-slate-700'}`}>{pct}%</span>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-slate-100 rounded-full mb-6 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-green-500'}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <ul className="space-y-1">
-                    {onboardingHistory.steps.map((step, i) => {
-                      const done = !!step.completedAt;
-                      const isCurrent = step.id === onboardingHistory.currentStageId;
-
-                      const stepDate = step.completedAt ? new Date(step.completedAt) : null;
-                      const nextStep = onboardingHistory.steps[i + 1];
-                      const nextDate = nextStep?.completedAt ? new Date(nextStep.completedAt) : null;
-
-                      const stepGoals = stepDate
-                        ? goals.filter(g => {
-                            if (!g.mentionedAt) return false;
-                            const gDate = new Date(g.mentionedAt);
-                            if (gDate < stepDate) return false;
-                            if (nextDate && gDate >= nextDate) return false;
-                            return true;
-                          })
-                        : [];
-
-                      return (
-                        <li key={step.id}>
-                          <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${isCurrent ? 'bg-emerald-50' : ''}`}>
-                            <div className="flex items-center justify-center w-6">
-                              {done ? (
-                                <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
-                                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              ) : isCurrent ? (
-                                <div className="w-5 h-5 rounded-full border-2 border-emerald-500 bg-emerald-500 flex items-center justify-center">
-                                  <div className="w-2 h-2 rounded-full bg-white" />
-                                </div>
-                              ) : (
-                                <div className="w-5 h-5 rounded-full border-2 border-slate-200" />
-                              )}
-                              {i < onboardingHistory.steps.length - 1 && (
-                                <div className={`absolute ml-[9px] mt-10 w-0.5 h-4 ${done ? 'bg-emerald-300' : 'bg-slate-200'}`} />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm ${done ? 'text-slate-900 font-medium' : isCurrent ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
-                                {step.label}
-                              </p>
-                            </div>
-                            {step.completedAt && (
-                              <p className="text-xs text-slate-400 shrink-0">
-                                {format(new Date(step.completedAt), 'd MMM yyyy', { locale: it })}
-                              </p>
-                            )}
-                          </div>
-                          {stepGoals.length > 0 && (
-                            <div className="ml-12 mt-1 mb-2 space-y-1">
-                              {stepGoals.map(g => (
-                                <div key={g.id} className="flex items-center gap-2 text-xs">
-                                  <Target className={`w-3 h-3 shrink-0 ${g.status === 'achieved' ? 'text-emerald-500' : g.status === 'abandoned' ? 'text-slate-300' : 'text-blue-500'}`} />
-                                  <span className={g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-600'}>
-                                    {g.title}
-                                  </span>
-                                  <Badge
-                                    variant={g.status === 'achieved' ? 'success' : g.status === 'abandoned' ? 'default' : 'info'}
-                                    size="sm"
-                                  >
-                                    {g.status === 'active' ? 'Attivo' : g.status === 'achieved' ? 'Raggiunto' : 'Abbandonato'}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              );
-            })()}
-          </Card>
-
-          {onboardingHistory?.issues && onboardingHistory.issues.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle>Problemi riscontrati</CardTitle></CardHeader>
-              <ul className="space-y-2">
-                {onboardingHistory.issues.map((issue, i) => (
-                  <li key={i} className="flex items-center justify-between">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
-                      {issue.label}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {format(new Date(issue.occurredAt), 'd MMM yyyy', { locale: it })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {tab === 'goals' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={async () => {
-                if (!token || extracting) return;
-                setExtracting(true);
-                setGoalExtractMessage(null);
-                try {
-                  const ex = await clientsApi.extractGoals(token, id);
-                  const d = ex.data;
-                  if (!d) {
-                    setGoalExtractMessage(null);
-                  } else if (d.hint === 'no_engagements') {
-                    setGoalExtractMessage(
-                      'Nessun engagement trovato in database per questo cliente. Esegui la sincronizzazione HubSpot (tipo «engagements») e riprova.'
-                    );
-                  } else if (d.hint === 'ai_empty' && d.extracted === 0) {
-                    setGoalExtractMessage(
-                      `Analizzati ${d.engagementCount} engagement: l’AI non ha estratto obiettivi concreti dal testo disponibile. Controlla che note/email/chiamate abbiano contenuto in HubSpot e che la sync includa le proprietà (hs_note_body, hs_email_text, ecc.).`
-                    );
-                  } else if (d.extracted > 0) {
-                    setGoalExtractMessage(`Inseriti ${d.extracted} obiettivi.`);
-                  } else {
-                    setGoalExtractMessage(null);
-                  }
-                  const r = await clientsApi.getGoals(token, id);
-                  setGoals(r.data ?? []);
-                } catch (e) {
-                  setGoalExtractMessage(e instanceof Error ? e.message : 'Estrazione non riuscita');
-                } finally {
-                  setExtracting(false);
-                }
-              }}
-              disabled={extracting}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 transition-colors disabled:opacity-50"
-            >
-              {extracting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Estrai da HubSpot
-            </button>
-            <button
-              onClick={() => setShowAddGoal(!showAddGoal)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
-            >
-              + Aggiungi
-            </button>
-            {goals.length > 0 && (
-              <button
-                onClick={async () => {
-                  if (!token || syncing) return;
-                  setSyncing(true);
-                  try {
-                    await clientsApi.syncGoalsToHubspot(token, id);
-                  } catch (e) {
-                    setGoalExtractMessage(e instanceof Error ? e.message : 'Sync HubSpot non riuscita');
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-                disabled={syncing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
-                {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-amber-500" />}
-                Sincronizza su HubSpot
-              </button>
-            )}
-          </div>
-
-          {goalExtractMessage && (
-            <p className="text-sm text-slate-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-              {goalExtractMessage}
-            </p>
-          )}
-
-          {showAddGoal && (
-            <Card>
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Titolo obiettivo"
-                  value={newGoalTitle}
-                  onChange={e => setNewGoalTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <textarea
-                  placeholder="Descrizione (opzionale)"
-                  value={newGoalDesc}
-                  onChange={e => setNewGoalDesc(e.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      if (!token || !newGoalTitle.trim()) return;
-                      await clientsApi.createGoal(token, id, { title: newGoalTitle.trim(), description: newGoalDesc.trim() || undefined });
-                      const r = await clientsApi.getGoals(token, id);
-                      setGoals(r.data ?? []);
-                      setNewGoalTitle('');
-                      setNewGoalDesc('');
-                      setShowAddGoal(false);
-                    }}
-                    className="px-3 py-1.5 text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-                  >
-                    Salva
-                  </button>
-                  <button
-                    onClick={() => { setShowAddGoal(false); setNewGoalTitle(''); setNewGoalDesc(''); }}
-                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-                  >
-                    Annulla
-                  </button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {goals.length === 0 ? (
-            <Card>
-              <p className="text-slate-400 text-sm text-center py-8">
-                Nessun obiettivo ancora. Usa &quot;Estrai da HubSpot&quot; per analizzare gli engagement con l&apos;AI, oppure aggiungine uno manualmente.
-              </p>
-            </Card>
-          ) : (
-            <Card padding="none">
-              <ul className="divide-y divide-slate-100">
-                {goals.map(g => (
-                  <li key={g.id} className="px-5 py-3">
-                    {editingGoalId === g.id ? (
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          value={editTitle}
-                          onChange={e => setEditTitle(e.target.value)}
-                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                        <textarea
-                          value={editDesc}
-                          onChange={e => setEditDesc(e.target.value)}
-                          rows={2}
-                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              if (!token) return;
-                              await clientsApi.updateGoal(token, id, { goalId: g.id, title: editTitle, description: editDesc });
-                              const r = await clientsApi.getGoals(token, id);
-                              setGoals(r.data ?? []);
-                              setEditingGoalId(null);
-                            }}
-                            className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-                          >
-                            Salva
-                          </button>
-                          <button onClick={() => setEditingGoalId(null)} className="px-2.5 py-1 text-xs font-medium rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50">
-                            Annulla
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start gap-3">
-                        <Target className={`w-4 h-4 mt-0.5 shrink-0 ${g.status === 'achieved' ? 'text-emerald-500' : g.status === 'abandoned' ? 'text-slate-300' : 'text-blue-500'}`} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <p className={`text-sm font-medium ${g.status === 'achieved' ? 'line-through text-slate-400' : g.status === 'abandoned' ? 'line-through text-slate-300' : 'text-slate-900'}`}>
-                              {g.title}
-                            </p>
-                            <Badge
-                              variant={g.status === 'achieved' ? 'success' : g.status === 'abandoned' ? 'default' : 'info'}
-                              size="sm"
-                            >
-                              {g.status === 'active' ? 'Attivo' : g.status === 'achieved' ? 'Raggiunto' : 'Abbandonato'}
-                            </Badge>
-                            <Badge variant="default" size="sm">
-                              {g.source === 'playbook' ? 'Playbook' : g.source === 'ai_extracted' ? 'AI' : 'Manuale'}
-                            </Badge>
-                          </div>
-                          {g.mentionedAt && (
-                            <p className="text-xs text-slate-400 mb-0.5">
-                              Discusso il {format(new Date(g.mentionedAt), 'd MMM yyyy', { locale: it })}
-                            </p>
-                          )}
-                          {g.description && <p className="text-xs text-slate-500">{g.description}</p>}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => { setEditingGoalId(g.id); setEditTitle(g.title); setEditDesc(g.description ?? ''); }}
-                            className="p-1 text-xs text-slate-400 hover:text-slate-600"
-                          >
-                            Modifica
-                          </button>
-                          {g.status === 'active' && (
-                            <button
-                              onClick={async () => {
-                                if (!token) return;
-                                await clientsApi.updateGoal(token, id, { goalId: g.id, status: 'achieved' });
-                                const r = await clientsApi.getGoals(token, id);
-                                setGoals(r.data ?? []);
-                              }}
-                              className="p-1 text-xs text-emerald-600 hover:text-emerald-800"
-                            >
-                              Raggiunto
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </div>
-      )}
-
       {tab === 'tasks' && (
         <Card padding="none">
           {hubspotTasks.length === 0 ? (
@@ -896,6 +1101,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           <SubscriptionTimeline accountId={client.hubspotId} />
         </div>
       )}
+
 
       <WorkflowEnrollModal
         open={showWorkflowModal}

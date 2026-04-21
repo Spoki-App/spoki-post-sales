@@ -1,5 +1,20 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    if (process.env.DISABLE_SYNC_CRON === '1') {
+      console.log('[sync-cron] Disabled via DISABLE_SYNC_CRON=1');
+      return;
+    }
+
+    // Avoid that uncaught errors from async HubSpot/DB tasks crash the dev server.
+    if (process.env.NODE_ENV !== 'production') {
+      process.on('uncaughtException', (err) => {
+        console.error('[sync-cron] uncaughtException swallowed in dev:', err);
+      });
+      process.on('unhandledRejection', (reason) => {
+        console.error('[sync-cron] unhandledRejection swallowed in dev:', reason);
+      });
+    }
+
     const INTERVAL_MS = 2 * 60 * 60 * 1000;
     const SYNC_STEPS = ['companies', 'contacts', 'tickets', 'engagements', 'scores'];
 

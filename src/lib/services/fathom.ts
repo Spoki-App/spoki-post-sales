@@ -3,7 +3,8 @@ import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('services:fathom');
 
-const TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = 90_000;
+const MAX_RETRIES = 2;
 
 export interface FathomMeeting {
   title: string;
@@ -64,25 +65,49 @@ async function fathomFetch<T>(path: string, params?: Record<string, string>, arr
     }
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  try {
-    const res = await fetch(url.toString(), {
-      headers: { 'X-Api-Key': apiKey },
-      signal: controller.signal,
-    });
+    try {
+      const res = await fetch(url.toString(), {
+        headers: { 'X-Api-Key': apiKey },
+        signal: controller.signal,
+      });
 
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      logger.error('Fathom API error', { status: res.status, detail: detail.slice(0, 300) });
-      throw new Error(`Fathom returned ${res.status}`);
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        // Server errors are retried; client errors fail fast.
+        if (res.status >= 500 && attempt < MAX_RETRIES) {
+          logger.warn('Fathom 5xx, will retry', { status: res.status, attempt: attempt + 1 });
+          lastErr = new Error(`Fathom returned ${res.status}`);
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        logger.error('Fathom API error', { status: res.status, detail: detail.slice(0, 300) });
+        throw new Error(`Fathom returned ${res.status}`);
+      }
+
+      return (await res.json()) as T;
+    } catch (err) {
+      lastErr = err;
+      const isAbort = err instanceof DOMException && err.name === 'AbortError';
+      const isNetwork = err instanceof TypeError;
+      if ((isAbort || isNetwork) && attempt < MAX_RETRIES) {
+        logger.warn('Fathom transient error, retrying', {
+          attempt: attempt + 1,
+          reason: isAbort ? 'timeout' : 'network',
+        });
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-
-    return await res.json() as T;
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastErr instanceof Error ? lastErr : new Error('Fathom request failed');
 }
 
 export interface ListMeetingsParams {

@@ -2,7 +2,7 @@
  * Typed API client for frontend → Next.js API routes communication.
  */
 
-import type { Client, ClientWithHealth, ClientGoal, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
+import type { Client, ClientWithHealth, ClientGoal, ClientDeal, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
 
@@ -94,6 +94,8 @@ export const clientsApi = {
     >(`/clients/${id}/goals/extract`, { method: 'POST', token }),
   syncGoalsToHubspot: (token: string, id: string) =>
     fetchApi<ApiResponse<{ noteId: string; goalsCount: number }>>(`/clients/${id}/goals/sync-hubspot`, { method: 'POST', token }),
+  getDeals: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ sales: ClientDeal[]; upselling: ClientDeal[] }>>(`/clients/${id}/deals`, { token }),
 };
 
 // ─── Customer Success ──────────────────────────────────────────────────────────
@@ -277,6 +279,38 @@ export const reportsApi = {
     fetchApi<ApiResponse<Record<string, unknown>>>('/reports/summary', { token }),
 };
 
+export type CheckpointEvidence = {
+  evidence: string | null;
+  confidence: 'low' | 'medium' | 'high';
+};
+
+export type StoredCallAnalysis = {
+  checkpoints: Record<string, boolean>;
+  evidences: Record<string, CheckpointEvidence> | null;
+  passedCount: number;
+  totalCheckpoints: number;
+  promptVersion: string;
+  model: string;
+  analyzedAt: string;
+  fathomUrl: string | null;
+};
+
+export type MatchFailureReason =
+  | 'NO_FATHOM_URL'
+  | 'NO_TRANSCRIPT'
+  | 'NO_MATCH'
+  | 'FATHOM_FETCH_FAILED'
+  | 'NO_TITLE';
+
+export type CallMatchFailure = {
+  hubspotId: string;
+  callType: CallReportType;
+  reasonCode: MatchFailureReason;
+  reasonMessage: string;
+  attempts: number;
+  lastAttemptAt: string;
+};
+
 export type TeamReportCallRow = {
   hubspotId: string;
   title: string;
@@ -284,34 +318,169 @@ export type TeamReportCallRow = {
   outcome: string | null;
   owner: { id: string | null; name: string };
   client: { id: string | null; hubspotId: string | null; name: string; domain: string | null } | null;
+  analysis: StoredCallAnalysis | null;
+  matchFailure?: CallMatchFailure | null;
 };
 
-export type ActivationCheckpointAnalysis = Record<string, boolean>;
-export type TrainingCheckpointAnalysis = Record<string, boolean>;
+export type CheckpointResult = {
+  passed: boolean;
+  evidence: string | null;
+  confidence: 'low' | 'medium' | 'high';
+};
 
-export const teamReportsApi = {
-  listCalls: (token: string, params: { type: string; days: number; owner?: string; outcome?: string }) => {
+export type ActivationCheckpointAnalysis = Record<string, CheckpointResult>;
+export type TrainingCheckpointAnalysis = Record<string, CheckpointResult>;
+export type CallCheckpointAnalysis = Record<string, CheckpointResult>;
+export type CallReportType = 'activation' | 'training';
+
+export type CheckpointPassRate = {
+  key: string;
+  passRate: number;
+  passed: number;
+  total: number;
+};
+
+export type OwnerLeaderboardEntry = {
+  ownerId: string | null;
+  ownerName: string;
+  totalCalls: number;
+  analyzedCount: number;
+  noFathomCount: number;
+  pendingCount: number;
+  avgPassRate: number;
+  avgPassedCount: number;
+  totalCheckpoints: number;
+  checkpointPassRates: Record<string, number>;
+};
+
+export type WeeklyTrendPoint = {
+  weekStart: string;
+  total: number;
+  analyzed: number;
+  avgPassRate: number;
+};
+
+export type ClientLeaderboardEntry = {
+  clientId: string;
+  clientName: string;
+  clientHubspotId: string | null;
+  totalCalls: number;
+  analyzedCount: number;
+  avgPassRate: number;
+  avgPassedCount: number;
+  totalCheckpoints: number;
+  lastAnalyzedAt: string | null;
+};
+
+export type CallSummaryResponse = {
+  totals: {
+    totalCalls: number;
+    analyzedCount: number;
+    noFathomCount: number;
+    pendingCount: number;
+    avgPassRate: number;
+    avgPassedCount: number;
+    totalCheckpoints: number;
+  };
+  checkpointPassRates: CheckpointPassRate[];
+  ownerLeaderboard: OwnerLeaderboardEntry[];
+  clientLeaderboard: ClientLeaderboardEntry[];
+  weeklyTrend: WeeklyTrendPoint[];
+};
+
+export const callReportsApi = {
+  listCalls: (
+    token: string,
+    type: CallReportType,
+    params: {
+      days: number;
+      owner?: string;
+      outcome?: string;
+      from?: string;
+      to?: string;
+      clientId?: string;
+    },
+  ) => {
     const qs = new URLSearchParams();
-    qs.set('type', params.type);
     qs.set('days', String(params.days));
     if (params.owner) qs.set('owner', params.owner);
     if (params.outcome) qs.set('outcome', params.outcome);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.clientId) qs.set('clientId', params.clientId);
     const q = qs.toString();
-    return fetchApi<ApiResponse<TeamReportCallRow[]> & { total?: number }>(
-      `/team-reports/calls${q ? `?${q}` : ''}`,
+    return fetchApi<
+      ApiResponse<TeamReportCallRow[]> & {
+        total?: number;
+        currentPromptVersion?: string;
+        currentLabels?: Record<string, string>;
+      }
+    >(`/call-reports/${type}/calls${q ? `?${q}` : ''}`, { token });
+  },
+
+  analyzeCall: (token: string, type: CallReportType, hubspotId: string) =>
+    fetchApi<ApiResponse<{ analysis: CallCheckpointAnalysis; fathomUrl?: string }>>(
+      `/call-reports/${type}/calls/${encodeURIComponent(hubspotId)}/analyze`,
+      { method: 'POST', token },
+    ),
+
+  deleteAnalysis: (token: string, type: CallReportType, hubspotId: string) =>
+    fetchApi<ApiResponse<{ removed: boolean }>>(
+      `/call-reports/${type}/calls/${encodeURIComponent(hubspotId)}/analysis`,
+      { method: 'DELETE', token },
+    ),
+
+  listStale: (token: string, type: CallReportType) =>
+    fetchApi<ApiResponse<{ currentPromptVersion: string; staleHubspotIds: string[]; count: number }>>(
+      `/call-reports/${type}/calls/refresh-stale`,
+      { token },
+    ),
+
+  deleteStale: (token: string, type: CallReportType) =>
+    fetchApi<ApiResponse<{ removed: number }>>(
+      `/call-reports/${type}/calls/refresh-stale`,
+      { method: 'DELETE', token },
+    ),
+
+  summary: (
+    token: string,
+    type: CallReportType,
+    params: {
+      days: number;
+      owner?: string;
+      from?: string;
+      to?: string;
+      clientId?: string;
+    },
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set('days', String(params.days));
+    if (params.owner) qs.set('owner', params.owner);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    return fetchApi<ApiResponse<CallSummaryResponse>>(
+      `/call-reports/${type}/summary?${qs.toString()}`,
       { token },
     );
   },
 
-  analyzeCall: (token: string, hubspotId: string) =>
-    fetchApi<ApiResponse<{ analysis: ActivationCheckpointAnalysis; fathomUrl?: string }>>(
-      `/team-reports/calls/${encodeURIComponent(hubspotId)}/analyze`,
-      { method: 'POST', token },
-    ),
+  diagnostics: (token: string, type: CallReportType, hubspotIds?: string[]) => {
+    const qs = hubspotIds && hubspotIds.length > 0 ? `?ids=${hubspotIds.join(',')}` : '';
+    return fetchApi<ApiResponse<{ failures: CallMatchFailure[]; count: number }>>(
+      `/call-reports/${type}/calls/diagnostics${qs}`,
+      { token },
+    );
+  },
 
-  analyzeBatch: async (token: string, hubspotIds: string[], signal?: AbortSignal) => {
+  analyzeBatch: async (
+    token: string,
+    type: CallReportType,
+    hubspotIds: string[],
+    signal?: AbortSignal,
+  ) => {
     const post = (authToken: string | undefined) =>
-      fetch('/api/v1/team-reports/calls/analyze-batch', {
+      fetch(`/api/v1/call-reports/${type}/calls/analyze-batch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -331,59 +500,100 @@ export const teamReportsApi = {
       }
     }
     if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(body.error ?? `API error ${res.status}`);
     }
     return res;
   },
+};
+
+// ─── Prompt Templates (admin) ─────────────────────────────────────────────────
+
+export type PromptCheckpoint = { key: string; label: string; description: string };
+
+export type PromptTemplateRow = {
+  id: string;
+  callType: CallReportType;
+  version: string;
+  systemPrompt: string;
+  checkpoints: PromptCheckpoint[];
+  isActive: boolean;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DryRunResult = {
+  engagementHubspotId: string;
+  callType: CallReportType;
+  templateId: string;
+  templateVersion: string;
+  elapsedMs: number;
+  transcriptLines: number;
+  analysis: Record<string, { passed: boolean; evidence: string | null; confidence: 'low' | 'medium' | 'high' }>;
+};
+
+export const promptTemplatesApi = {
+  get: (token: string, type: CallReportType) =>
+    fetchApi<ApiResponse<{ active: PromptTemplateRow; history: PromptTemplateRow[] }>>(
+      `/admin/prompts/${type}`,
+      { token },
+    ),
+
+  createDraft: (
+    token: string,
+    type: CallReportType,
+    body: { systemPrompt: string; checkpoints: PromptCheckpoint[]; notes?: string | null },
+  ) =>
+    fetchApi<ApiResponse<PromptTemplateRow>>(`/admin/prompts/${type}`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  activate: (token: string, type: CallReportType, id: string) =>
+    fetchApi<ApiResponse<PromptTemplateRow>>(`/admin/prompts/${type}/activate`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ id }),
+    }),
+
+  dryRun: (
+    token: string,
+    type: CallReportType,
+    body: {
+      engagementHubspotId: string;
+      templateId?: string;
+      template?: { systemPrompt: string; checkpoints: PromptCheckpoint[] };
+    },
+  ) =>
+    fetchApi<ApiResponse<DryRunResult>>(`/admin/prompts/${type}/dry-run`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+};
+
+// Legacy aliases kept for backward compatibility with existing callers.
+export const teamReportsApi = {
+  listCalls: (
+    token: string,
+    params: { type: string; days: number; owner?: string; outcome?: string },
+  ) => callReportsApi.listCalls(token, (params.type as CallReportType) || 'activation', params),
+  analyzeCall: (token: string, hubspotId: string) =>
+    callReportsApi.analyzeCall(token, 'activation', hubspotId),
+  analyzeBatch: (token: string, hubspotIds: string[], signal?: AbortSignal) =>
+    callReportsApi.analyzeBatch(token, 'activation', hubspotIds, signal),
 };
 
 export const trainingReportsApi = {
-  listCalls: (token: string, params: { days: number; owner?: string; outcome?: string }) => {
-    const qs = new URLSearchParams();
-    qs.set('days', String(params.days));
-    if (params.owner) qs.set('owner', params.owner);
-    if (params.outcome) qs.set('outcome', params.outcome);
-    const q = qs.toString();
-    return fetchApi<ApiResponse<TeamReportCallRow[]> & { total?: number }>(
-      `/training-reports/calls${q ? `?${q}` : ''}`,
-      { token },
-    );
-  },
-
+  listCalls: (token: string, params: { days: number; owner?: string; outcome?: string }) =>
+    callReportsApi.listCalls(token, 'training', params),
   analyzeCall: (token: string, hubspotId: string) =>
-    fetchApi<ApiResponse<{ analysis: TrainingCheckpointAnalysis; fathomUrl?: string }>>(
-      `/training-reports/calls/${encodeURIComponent(hubspotId)}/analyze`,
-      { method: 'POST', token },
-    ),
-
-  analyzeBatch: async (token: string, hubspotIds: string[], signal?: AbortSignal) => {
-    const post = (authToken: string | undefined) =>
-      fetch('/api/v1/training-reports/calls/analyze-batch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({ hubspotIds }),
-        signal,
-      });
-
-    let res = await post(token);
-    if (res.status === 401 && token) {
-      const user = getFirebaseAuth().currentUser;
-      if (user) {
-        const fresh = await user.getIdToken(true);
-        useAuthStore.getState().setToken(fresh);
-        res = await post(fresh);
-      }
-    }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { error?: string };
-      throw new Error(body.error ?? `API error ${res.status}`);
-    }
-    return res;
-  },
+    callReportsApi.analyzeCall(token, 'training', hubspotId),
+  analyzeBatch: (token: string, hubspotIds: string[], signal?: AbortSignal) =>
+    callReportsApi.analyzeBatch(token, 'training', hubspotIds, signal),
 };
 
 // ─── Dashboard Data (Metabase integration) ────────────────────────────────────

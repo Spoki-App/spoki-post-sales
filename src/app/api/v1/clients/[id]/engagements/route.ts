@@ -2,6 +2,19 @@ import { NextRequest } from 'next/server';
 import { withAuth, createSuccessResponse, createErrorResponse, ApiError, type AuthenticatedRequest, type RouteHandlerContext } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 
+function classifyNote(body: string): string | null {
+  const t = body.replace(/<[^>]*>/g, '').trim();
+  if (/^playbook:\s*followup\s*call\s*2/i.test(t)) return 'Followup Call 2';
+  if (/^playbook:\s*followup\s*call\s*1/i.test(t)) return 'Followup Call 1';
+  if (/^playbook:\s*training/i.test(t)) return 'Training Call';
+  if (/^playbook:\s*activation/i.test(t)) return 'Activation Call';
+  if (/^playbook\s+onboarding\s+post\s*training/i.test(t)) return 'Post Training';
+  if (/^playbook\s+onboarding\s+post\s*activation/i.test(t)) return 'Post Activation';
+  if (/handoff/i.test(t)) return 'Handoff Sales \u2192 CS';
+  if (/^playbook/i.test(t)) return 'Playbook';
+  return null;
+}
+
 export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedRequest, context?: RouteHandlerContext) => {
   try {
     const params = await context?.params;
@@ -42,6 +55,7 @@ export const GET = withAuth(async (_req: NextRequest, _auth: AuthenticatedReques
         taskStatus: rp.hs_task_status ?? null,
         taskPriority: rp.hs_task_priority ?? null,
         taskType: rp.hs_task_type ?? null,
+        noteCategory: e.type === 'NOTE' ? classifyNote(rp.hs_note_body || rp.hs_body_preview || '') : null,
       };
     }) });
   } catch (error) {

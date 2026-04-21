@@ -21,8 +21,10 @@ const logger = getLogger('hubspot:client');
 const ENGAGEMENT_BATCH_PROPERTIES = [
   'hs_engagement_type',
   'hs_timestamp',
+  'hs_createdate',
   'hubspot_owner_id',
   'hs_engagement_source',
+  'hs_activity_type',
   'hs_email_from_email',
   'hs_email_from_firstname',
   'hs_email_from_lastname',
@@ -38,6 +40,9 @@ const ENGAGEMENT_BATCH_PROPERTIES = [
   'hs_call_body',
   'hs_meeting_title',
   'hs_meeting_body',
+  'hs_meeting_start_time',
+  'hs_meeting_end_time',
+  'hs_meeting_outcome',
   'hs_internal_meeting_notes',
   'hs_task_subject',
   'hs_task_status',
@@ -143,6 +148,18 @@ export interface HSEngagement {
   rawProperties: Record<string, unknown>;
 }
 
+export interface HSDeal {
+  id: string;
+  companyHubspotId: string;
+  pipelineId: string;
+  stageId: string;
+  dealName: string | null;
+  amount: number | null;
+  closeDate: string | null;
+  ownerId: string | null;
+  stageEnteredAt: string | null;
+}
+
 class HubSpotClient {
   private http: AxiosInstance;
 
@@ -176,6 +193,14 @@ class HubSpotClient {
         await new Promise(r => setTimeout(r, wait));
         return this.getWithRetry(url, params, options, attempt + 1);
       }
+      const meta = hubspotErrMeta(err);
+      logger.error('HubSpot request failed', {
+        url,
+        method: options?.method ?? 'GET',
+        status: meta.status,
+        body: meta.body?.slice(0, 800),
+        message: meta.message,
+      });
       throw err;
     }
   }
@@ -239,12 +264,17 @@ class HubSpotClient {
   }
 
   async getCompanies(): Promise<HSCompany[]> {
-    logger.info('Fetching companies from HubSpot (filtered by CS owner)');
+    logger.info('Fetching companies from HubSpot (filtered by post-sales owners)');
     const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
 
-    // Fetch companies where ANY of the three owner fields matches a known CS/Support team member
+    // Post-sales portfolio = companies owned by Customer Success, Customer Support, or Partner Success.
+    // The HubSpot Search API caps results at 10k per query; restricting to these teams keeps the
+    // result set well below that limit (~4.8k) and avoids the 400 that occurs when paginating past 10k.
     const { HUBSPOT_OWNERS } = await import('@/lib/config/owners');
-    const ownerIds = Object.keys(HUBSPOT_OWNERS);
+    const POST_SALES_TEAMS = new Set(['Customer Success', 'Customer Support', 'Partner Success']);
+    const ownerIds = Object.values(HUBSPOT_OWNERS)
+      .filter(o => POST_SALES_TEAMS.has(o.team))
+      .map(o => o.id);
 
     const results: HSCompany[] = [];
     let after: string | undefined;
@@ -1102,6 +1132,112 @@ class HubSpotClient {
 
     logger.info(`Found sales owners for ${Object.keys(result).length} companies`);
     return result;
+  }
+
+  async fetchDealsForCompanies(companyHubspotIds: string[]): Promise<HSDeal[]> {
+    if (companyHubspotIds.length === 0) return [];
+
+    const { TRACKED_PIPELINE_IDS, DEAL_PIPELINES } = await import('@/lib/config/deal-pipelines');
+
+    const BATCH = 100;
+    const companyToDealIds = new Map<string, string[]>();
+
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ from?: { id?: string }; to?: Array<{ toObjectId: string | number }> }>;
+        };
+        for (const row of results ?? []) {
+          const cid = row.from?.id;
+          if (!cid) continue;
+          const ids = (row.to ?? []).map(t => String(t.toObjectId));
+          if (ids.length > 0) {
+            const prev = companyToDealIds.get(cid) ?? [];
+            companyToDealIds.set(cid, [...new Set([...prev, ...ids])]);
+          }
+        }
+      } catch (err) {
+        const { message } = hubspotErrMeta(err);
+        logger.warn('Deal associations batch failed', { message });
+      }
+    }
+
+    const allDealIds = [...new Set([...companyToDealIds.values()].flat())];
+    if (allDealIds.length === 0) return [];
+
+    logger.info(`Fetching ${allDealIds.length} deals for pipeline sync`);
+
+    const dealProps = ['dealname', 'amount', 'pipeline', 'dealstage', 'closedate', 'hubspot_owner_id'];
+
+    const allStageIds = TRACKED_PIPELINE_IDS.flatMap(pid =>
+      Object.keys(DEAL_PIPELINES[pid].stages)
+    );
+    const dateEnteredProps = allStageIds.map(sid => `hs_date_entered_${sid}`);
+    const propsToFetch = [...dealProps, ...dateEnteredProps];
+
+    const dealById = new Map<string, Record<string, string | null>>();
+
+    for (let i = 0; i < allDealIds.length; i += BATCH) {
+      const batch = allDealIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: { properties: propsToFetch, inputs: batch.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ id: string; properties: Record<string, string | null> }>;
+        };
+        for (const r of results ?? []) {
+          dealById.set(r.id, r.properties);
+        }
+      } catch (err) {
+        const { message } = hubspotErrMeta(err);
+        logger.warn('Deal batch/read failed', { message });
+      }
+    }
+
+    const dealIdToCompany = new Map<string, string>();
+    for (const [companyId, dids] of companyToDealIds) {
+      for (const did of dids) dealIdToCompany.set(did, companyId);
+    }
+
+    const results: HSDeal[] = [];
+    const trackedSet = new Set<string>(TRACKED_PIPELINE_IDS as unknown as string[]);
+
+    for (const [dealId, props] of dealById) {
+      const pipelineId = props.pipeline ?? '';
+      if (!trackedSet.has(pipelineId)) continue;
+
+      const stageId = props.dealstage ?? '';
+      const companyHubspotId = dealIdToCompany.get(dealId);
+      if (!companyHubspotId) continue;
+
+      const dateEnteredKey = `hs_date_entered_${stageId}`;
+      const stageEnteredAt = props[dateEnteredKey] ?? null;
+
+      const amtStr = props.amount;
+      const amount = amtStr ? parseFloat(amtStr) : null;
+
+      results.push({
+        id: dealId,
+        companyHubspotId,
+        pipelineId,
+        stageId,
+        dealName: props.dealname ?? null,
+        amount: amount && Number.isFinite(amount) ? Math.round(amount * 100) / 100 : null,
+        closeDate: props.closedate ?? null,
+        ownerId: props.hubspot_owner_id ?? null,
+        stageEnteredAt,
+      });
+    }
+
+    logger.info(`Found ${results.length} deals in tracked pipelines`);
+    return results;
   }
 
   async createNoteOnCompany(companyHubspotId: string, body: string): Promise<string> {

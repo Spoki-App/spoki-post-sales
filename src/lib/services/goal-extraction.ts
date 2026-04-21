@@ -111,6 +111,13 @@ function engagementTextContent(type: string, title: string | null, raw: unknown)
 }
 
 export async function extractGoalsForClient(clientId: string): Promise<GoalExtractionResult> {
+  const existingGoalsRes = await pgQuery<{ id: string; title: string; source: string }>(
+    `SELECT id, title, source FROM client_goals WHERE client_id = $1`,
+    [clientId]
+  );
+  const manualGoals = existingGoalsRes.rows.filter(g => g.source === 'manual');
+  const aiGoalIds = existingGoalsRes.rows.filter(g => g.source !== 'manual').map(g => g.id);
+
   const engRes = await pgQuery<EngagementRow>(
     `SELECT e.id, e.type, e.occurred_at, e.title, e.raw_properties
      FROM engagements e
@@ -159,6 +166,12 @@ export async function extractGoalsForClient(clientId: string): Promise<GoalExtra
 
   const contextLines = playbooks.length + otherEngagements.length;
 
+  const manualGoalsList = manualGoals.length > 0
+    ? manualGoals.map(g => `- "${g.title}"`).join('\n')
+    : '(none)';
+
+  const maxNewGoals = Math.max(0, 5 - manualGoals.length);
+
   const prompt = `You are a Customer Success analyst at Spoki. Analyze the following engagement data for a client and extract concrete OBJECTIVES / GOALS that were agreed upon, discussed, or implied during interactions.
 
 === STRUCTURED PLAYBOOK NOTES ===
@@ -167,13 +180,18 @@ ${playbooks.length > 0 ? playbooks.join('\n\n---\n\n') : '(none)'}
 === OTHER ENGAGEMENTS (calls, emails, meetings) ===
 ${otherEngagements.length > 0 ? otherEngagements.join('\n\n---\n\n') : '(none)'}
 
+=== EXISTING MANUAL GOALS (do NOT duplicate these) ===
+${manualGoalsList}
+
 Reply ONLY with valid JSON (no markdown, no backticks):
 [
   {"title": "short goal title (max 80 chars)", "description": "1-2 sentence description of the goal and context", "mentionedAt": "YYYY-MM-DD", "fromPlaybook": true/false, "engagementIndex": N or null}
 ]
 
 Rules:
-- Extract 3-10 goals maximum, focusing on the most concrete and actionable ones.
+- Extract up to ${maxNewGoals} goals maximum. If there are already 5 or more manual goals, return [].
+- Each goal must be clearly distinct from all others. Do NOT create similar or overlapping goals.
+- Do NOT duplicate or rephrase any of the existing manual goals listed above.
 - Goals should be things like: feature adoption targets, usage milestones, onboarding checkpoints, integration goals, training objectives, campaign launch targets.
 - Do NOT extract generic platitudes like "improve customer satisfaction".
 - mentionedAt is the date (YYYY-MM-DD) when this goal was first discussed or agreed upon, taken from the engagement timeline dates. Use the earliest date where this goal appears.
@@ -184,9 +202,18 @@ Rules:
 
   const rawJson = await generateJson(prompt);
 
-  const parsed = parseAiJsonArray(rawJson);
+  let parsed = parseAiJsonArray(rawJson);
   if (parsed.length === 0 && rawJson.trim().length > 0) {
     logger.warn('AI returned no parseable goals', { rawJson: rawJson.slice(0, 400) });
+  }
+  parsed = parsed.slice(0, maxNewGoals);
+
+  if (aiGoalIds.length > 0) {
+    await pgQuery(
+      `DELETE FROM client_goals WHERE id = ANY($1::uuid[])`,
+      [aiGoalIds]
+    );
+    logger.info('Removed old AI goals before re-extraction', { clientId, removed: aiGoalIds.length });
   }
 
   let inserted = 0;
@@ -202,19 +229,25 @@ Rules:
 
     const engagementId = engIdx !== null ? engagements[engIdx].id : null;
 
-    const rawPb = (goal as ExtractedGoal & { fromPlaybook?: unknown }).fromPlaybook;
+    const rawPb: unknown = (goal as { fromPlaybook?: unknown }).fromPlaybook;
     const fromPb = rawPb === true || rawPb === 'true';
     const source = fromPb ? 'playbook' : 'ai_extracted';
     const mentionedAt = safeMentionedDate(
       typeof goal.mentionedAt === 'string' ? goal.mentionedAt : goal.mentionedAt != null ? String(goal.mentionedAt) : null
     );
 
-    await pgQuery(
+    const res = await pgQuery<{ id: string }>(
       `INSERT INTO client_goals (client_id, title, description, status, source, source_engagement_id, mentioned_at, created_by)
-       VALUES ($1, $2, $3, 'active', $4, $5, $6, 'ai')`,
+       VALUES ($1, $2, $3, 'active', $4, $5, $6, 'ai')
+       ON CONFLICT (client_id, title) DO UPDATE SET
+         description = EXCLUDED.description,
+         source = EXCLUDED.source,
+         source_engagement_id = EXCLUDED.source_engagement_id,
+         mentioned_at = EXCLUDED.mentioned_at
+       RETURNING id`,
       [clientId, goal.title.slice(0, 200), goal.description || null, source, engagementId, mentionedAt]
     );
-    inserted++;
+    if (res.rows.length > 0) inserted++;
   }
 
   logger.info('Goals extracted and inserted', {

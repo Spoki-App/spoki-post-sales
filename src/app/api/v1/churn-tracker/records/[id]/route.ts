@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server';
-import { withAuth, createSuccessResponse, createErrorResponse, type RouteHandlerContext } from '@/lib/api/middleware';
+import { withAuth, createSuccessResponse, createErrorResponse, ApiError, type RouteHandlerContext } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
-import { CHURN_STATUSES } from '@/types/churn';
+import { CHURN_STATUSES, CHURN_REASONS, CONTACT_OUTCOMES } from '@/types/churn';
+
+const VALID_CHURN_REASONS = Object.keys(CHURN_REASONS);
+const VALID_CONTACT_OUTCOMES = Object.keys(CONTACT_OUTCOMES);
 
 export const PATCH = withAuth(async (request: NextRequest, _auth, context?: RouteHandlerContext) => {
   try {
@@ -22,13 +25,21 @@ export const PATCH = withAuth(async (request: NextRequest, _auth, context?: Rout
     }
 
     if (body.churnReason !== undefined) {
+      const reason = body.churnReason;
+      if (reason !== null && reason !== '' && !VALID_CHURN_REASONS.includes(reason as string)) {
+        throw new ApiError(400, 'Invalid churn reason');
+      }
       sets.push(`churn_reason = $${idx++}`);
-      params.push(body.churnReason || null);
+      params.push(reason || null);
     }
 
     if (body.contactOutcome !== undefined) {
+      const outcome = body.contactOutcome;
+      if (outcome !== null && outcome !== '' && !VALID_CONTACT_OUTCOMES.includes(outcome as string)) {
+        throw new ApiError(400, 'Invalid contact outcome');
+      }
       sets.push(`contact_outcome = $${idx++}`);
-      params.push(body.contactOutcome || null);
+      params.push(outcome || null);
     }
 
     if (body.assignedTo !== undefined) {

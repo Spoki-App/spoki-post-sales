@@ -106,6 +106,16 @@ async function handleSync(type: string | null): Promise<NextResponse> {
       return NextResponse.json({ success: true, type: 'engagements', count });
     }
 
+    if (type === 'deals') {
+      const { syncDealsOnly } = await import('@/lib/hubspot/sync');
+      const companyIdsRes = await pgQuery<{ hubspot_id: string }>('SELECT hubspot_id FROM clients');
+      const companyHubspotIds = companyIdsRes.rows.map(r => r.hubspot_id);
+      logger.info(`Fetching deals for ${companyHubspotIds.length} synced companies`);
+      const deals = await client.fetchDealsForCompanies(companyHubspotIds);
+      const count = await syncDealsOnly(deals);
+      return NextResponse.json({ success: true, type: 'deals', count });
+    }
+
     // Full sync (cron)
     const syncResult = await runFullSync();
     return NextResponse.json({ success: true, sync: syncResult });
