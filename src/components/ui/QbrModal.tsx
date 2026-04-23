@@ -255,7 +255,7 @@ export function QbrModal({ open, onClose, clientId, clientName }: Props) {
     setError(null);
     try {
       const b64 = await generatePdfBase64(slides, clientName);
-      await qbrApi.send(token, clientName, [...selectedEmails], b64);
+      await qbrApi.send(token, clientName, [...selectedEmails], b64, language);
       setSendResult(`QBR inviata a ${selectedEmails.size} contatt${selectedEmails.size === 1 ? 'o' : 'i'}`);
       setSelectedEmails(new Set());
     } catch (e) {

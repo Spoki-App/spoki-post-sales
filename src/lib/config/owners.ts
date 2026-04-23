@@ -23,7 +23,7 @@ export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {
   "78965003":   { id: "78965003",   email: "giulio.trinchera@spoki.it",      firstName: "Giulio",     lastName: "Trinchera",   team: "Customer Success" },
   "31909019":   { id: "31909019",   email: "katerina.khorzhan@spoki.com",    firstName: "Katerina",   lastName: "Khorzhan",    team: "Customer Success" },
   "32876649":   { id: "32876649",   email: "lucrezia.terreni@spoki.com",     firstName: "Lucrezia",   lastName: "Terreni",     team: "Customer Success" },
-  "32686457":   { id: "32686457",   email: "riccardo.marino@spoki.com",      firstName: "Riccardo",   lastName: "Marino",      team: "Customer Success" },
+  "32686457":   { id: "32686457",   email: "riccardo.marino@spoki.com",      firstName: "Riccardo",   lastName: "Marino",      team: "Customer Success", bookingUrl: "https://meetings-eu1.hubspot.com/riccardo-marino/strategic-call" },
   "30448724":   { id: "30448724",   email: "antonella.dagnano@spoki.com",    firstName: "Antonella",  lastName: "D'Agnano",    team: "Customer Success" },
   "33686350":   { id: "33686350",   email: "giovanni.caniglia@spoki.com",    firstName: "Gianluca",   lastName: "Caniglia",    team: "Customer Success" },
 

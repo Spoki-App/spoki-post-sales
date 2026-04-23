@@ -38,6 +38,13 @@ const L = {
     releaseFallbackAi: 'Le ultime novita della piattaforma non sono disponibili al momento.\n\nIl tuo consulente Spoki ti aggiornera sulle novita piu rilevanti per il tuo business.',
     releaseFallbackEmpty: 'Nessuna novita di rilievo nel periodo coperto da questa QBR.\n\nIl tuo consulente Spoki ti aggiornera appena saranno disponibili nuove funzionalita.',
     releaseFallbackNoCfg: 'Le ultime release e miglioramenti della piattaforma saranno disponibili a breve.\n\nResta aggiornato: il tuo Customer Success Manager ti comunichera le novita piu rilevanti per il tuo business.',
+    investmentSection: '--- INVESTIMENTO ---',
+    mrrLabel: 'MRR',
+    mrrUp: '↑ in crescita',
+    mrrDown: '↓ in calo',
+    mrrStable: '→ stabile',
+    totalInvestment: (total: string) => `Investimento totale nel trimestre: ${total}`,
+    investmentBreakdown: (sub: string, recharge: string) => `  di cui abbonamento: ${sub} | ricariche: ${recharge}`,
   },
   en: {
     locale: 'en-US',
@@ -65,6 +72,13 @@ const L = {
     releaseFallbackAi: 'The latest platform updates are not available at this time.\n\nYour Spoki consultant will keep you updated on the most relevant improvements for your business.',
     releaseFallbackEmpty: 'No major updates during the period covered by this QBR.\n\nYour Spoki consultant will notify you as soon as new features are available.',
     releaseFallbackNoCfg: 'The latest releases and platform improvements will be available soon.\n\nStay tuned: your Customer Success Manager will share the most relevant updates for your business.',
+    investmentSection: '--- INVESTMENT ---',
+    mrrLabel: 'MRR',
+    mrrUp: '↑ growing',
+    mrrDown: '↓ declining',
+    mrrStable: '→ stable',
+    totalInvestment: (total: string) => `Total quarterly investment: ${total}`,
+    investmentBreakdown: (sub: string, recharge: string) => `  of which subscription: ${sub} | top-ups: ${recharge}`,
   },
   es: {
     locale: 'es-ES',
@@ -92,6 +106,13 @@ const L = {
     releaseFallbackAi: 'Las ultimas novedades de la plataforma no estan disponibles en este momento.\n\nTu consultor Spoki te mantendra informado sobre las mejoras mas relevantes para tu negocio.',
     releaseFallbackEmpty: 'No hay novedades destacadas en el periodo cubierto por esta QBR.\n\nTu consultor Spoki te avisara cuando haya nuevas funcionalidades disponibles.',
     releaseFallbackNoCfg: 'Las ultimas versiones y mejoras de la plataforma estaran disponibles pronto.\n\nMantente al dia: tu Customer Success Manager te comunicara las novedades mas relevantes para tu negocio.',
+    investmentSection: '--- INVERSION ---',
+    mrrLabel: 'MRR',
+    mrrUp: '↑ en crecimiento',
+    mrrDown: '↓ en descenso',
+    mrrStable: '→ estable',
+    totalInvestment: (total: string) => `Inversion total en el trimestre: ${total}`,
+    investmentBreakdown: (sub: string, recharge: string) => `  de los cuales suscripcion: ${sub} | recargas: ${recharge}`,
   },
 } as const;
 
@@ -148,6 +169,33 @@ function buildUsageSlideContent(
   lines.push('');
   if (usage.currentPlan) lines.push(`${t.planLabel}: ${usage.currentPlan}`);
   if (usage.billing) lines.push(`${t.billingLabel}: ${usage.billing}`);
+
+  const totalInvestment = usage.subscriptionTotal + usage.rechargeTotal;
+  const hasMrr = usage.currentMrr !== null && usage.currentMrr > 0;
+  const hasInvestment = totalInvestment > 0;
+
+  if (hasMrr || hasInvestment) {
+    lines.push('');
+    lines.push(t.investmentSection);
+    lines.push('');
+
+    if (hasMrr) {
+      const trendLabel = usage.mrrTrend === 'up' ? t.mrrUp
+        : usage.mrrTrend === 'down' ? t.mrrDown
+        : t.mrrStable;
+      lines.push(`${t.mrrLabel}: €${fmt(usage.currentMrr!, t.locale)} ${trendLabel}`);
+    }
+
+    if (hasInvestment) {
+      lines.push(t.totalInvestment(`€${fmt(totalInvestment, t.locale)}`));
+      if (usage.rechargeTotal > 0) {
+        lines.push(t.investmentBreakdown(
+          `€${fmt(usage.subscriptionTotal, t.locale)}`,
+          `€${fmt(usage.rechargeTotal, t.locale)}`,
+        ));
+      }
+    }
+  }
 
   return lines.join('\n');
 }

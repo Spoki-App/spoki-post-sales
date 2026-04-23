@@ -6,6 +6,36 @@ import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('api:qbr-send');
 
+const EMAIL_COPY = {
+  it: {
+    lang: 'it',
+    greeting: 'Ciao,',
+    body: (clientName: string) =>
+      `in allegato trovi la <strong>Quarterly Business Review</strong> relativa a <strong>${clientName}</strong>, con il riepilogo delle attivita svolte insieme e i prossimi passi della nostra collaborazione.`,
+    closing: 'Per qualsiasi domanda o approfondimento, rispondi direttamente a questa email.',
+    attachmentLabel: 'Documento allegato a questa email',
+    consultantLabel: 'Il vostro consulente',
+  },
+  en: {
+    lang: 'en',
+    greeting: 'Hello,',
+    body: (clientName: string) =>
+      `please find attached the <strong>Quarterly Business Review</strong> for <strong>${clientName}</strong>, summarising what we have accomplished together and our next steps.`,
+    closing: 'If you have any questions, just reply to this email.',
+    attachmentLabel: 'Document attached to this email',
+    consultantLabel: 'Your consultant',
+  },
+  es: {
+    lang: 'es',
+    greeting: 'Hola,',
+    body: (clientName: string) =>
+      `adjunto encontraras la <strong>Quarterly Business Review</strong> de <strong>${clientName}</strong>, con el resumen de lo que hemos logrado juntos y los proximos pasos de nuestra colaboracion.`,
+    closing: 'Si tienes alguna pregunta, responde directamente a este correo.',
+    attachmentLabel: 'Documento adjunto a este correo',
+    consultantLabel: 'Tu consultor',
+  },
+} as const;
+
 function getTransporter() {
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
@@ -28,6 +58,7 @@ export const POST = withAuth(async (request: NextRequest, auth: AuthenticatedReq
       clientName?: string;
       recipientEmails?: string[];
       pdfBase64?: string;
+      language?: string;
     };
 
     if (!body.clientName) throw new ApiError(400, 'Missing clientName');
@@ -44,6 +75,10 @@ export const POST = withAuth(async (request: NextRequest, auth: AuthenticatedReq
     const filename = `QBR_${body.clientName.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
     const senderName = auth.name || 'Spoki';
     const transporter = getTransporter();
+    const lang = (['it', 'en', 'es'] as const).includes(body.language as 'it' | 'en' | 'es')
+      ? (body.language as 'it' | 'en' | 'es')
+      : 'it';
+    const copy = EMAIL_COPY[lang];
 
     await transporter.sendMail({
       from: `${senderName} <${config.gmail.user}>`,
@@ -52,7 +87,7 @@ export const POST = withAuth(async (request: NextRequest, auth: AuthenticatedReq
       subject: `QBR - ${body.clientName}`,
       html: `
 <!DOCTYPE html>
-<html lang="it">
+<html lang="${copy.lang}">
 <head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background-color:#f0fdf4;font-family:'Helvetica Neue',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;padding:40px 0;">
@@ -84,14 +119,13 @@ export const POST = withAuth(async (request: NextRequest, auth: AuthenticatedReq
         <tr>
           <td style="padding:36px 40px 24px;">
             <p style="margin:0 0 20px;color:#1a1f1d;font-size:15px;line-height:1.7;">
-              Ciao,
+              ${copy.greeting}
             </p>
             <p style="margin:0 0 20px;color:#1a1f1d;font-size:15px;line-height:1.7;">
-              in allegato trovi la <strong>Quarterly Business Review</strong> relativa a <strong>${body.clientName}</strong>,
-              con il riepilogo delle attivita svolte insieme e i prossimi passi della nostra collaborazione.
+              ${copy.body(body.clientName)}
             </p>
             <p style="margin:0 0 28px;color:#1a1f1d;font-size:15px;line-height:1.7;">
-              Per qualsiasi domanda o approfondimento, rispondi direttamente a questa email.
+              ${copy.closing}
             </p>
 
             <!-- Attachment badge -->
@@ -107,7 +141,7 @@ export const POST = withAuth(async (request: NextRequest, auth: AuthenticatedReq
                       </td>
                       <td style="vertical-align:middle;">
                         <p style="margin:0;color:#1a1f1d;font-size:14px;font-weight:600;">QBR_${body.clientName.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf</p>
-                        <p style="margin:2px 0 0;color:#6b7280;font-size:12px;">Documento allegato a questa email</p>
+                        <p style="margin:2px 0 0;color:#6b7280;font-size:12px;">${copy.attachmentLabel}</p>
                       </td>
                     </tr>
                   </table>
@@ -125,7 +159,7 @@ export const POST = withAuth(async (request: NextRequest, auth: AuthenticatedReq
                 </td>
                 <td style="vertical-align:top;">
                   <p style="margin:0 0 2px;color:#1a1f1d;font-size:14px;font-weight:600;">${senderName}</p>
-                  <p style="margin:0 0 2px;color:#6b7280;font-size:13px;">Il vostro consulente</p>
+                  <p style="margin:0 0 2px;color:#6b7280;font-size:13px;">${copy.consultantLabel}</p>
                   <p style="margin:0;color:#16d46c;font-size:13px;font-weight:600;">Spoki</p>
                 </td>
               </tr>
