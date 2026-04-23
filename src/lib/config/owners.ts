@@ -41,6 +41,7 @@ export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {
   "31172513":   { id: "31172513",   email: "marco.rende@spoki.com",          firstName: "Marco",      lastName: "Rende",       team: "Sales" },
   "31766930":   { id: "31766930",   email: "giuseppe.cannistraro@spoki.com",  firstName: "Giuseppe",  lastName: "Cannistraro", team: "Sales" },
   "33084216":   { id: "33084216",   email: "giulio.pipparoni@spoki.com",     firstName: "Giulio",     lastName: "Pipparoni",   team: "Sales" },
+  "33525958":   { id: "33525958",   email: "fabio.colautti@spoki.com",       firstName: "Fabio",      lastName: "Colautti",    team: "Sales" },
   "69049846":   { id: "69049846",   email: "salvatore.marzolla@spoki.com",   firstName: "Salvatore",  lastName: "Marzolla",    team: "Sales" },
   "75722777":   { id: "75722777",   email: "giuseppe.colucci@spoki.com",     firstName: "Giuseppe",   lastName: "Colucci",     team: "Sales" },
   "78556068":   { id: "78556068",   email: "davide.mango@spoki.com",         firstName: "Davide",     lastName: "Mango",       team: "Sales" },
