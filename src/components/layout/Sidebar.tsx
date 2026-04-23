@@ -20,7 +20,7 @@ import {
   HeartHandshake,
   Database,
   AlertTriangle,
-  Phone,
+  Shield,
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -36,9 +36,9 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex flex-col w-60 shrink-0 h-screen bg-emerald-950 text-emerald-50">
+    <aside className="flex flex-col w-60 shrink-0 h-screen bg-slate-950 text-slate-50">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-emerald-900">
+      <div className="px-5 py-5 border-b border-slate-800">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shrink-0">
             <Users className="w-4 h-4 text-white" />
@@ -54,7 +54,7 @@ export function Sidebar() {
           href="/dashboard"
           className={cn(
             'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-            pathname === '/dashboard' ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
+            pathname === '/dashboard' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
           )}
         >
           <LayoutDashboard className="w-4 h-4 shrink-0" />
@@ -63,7 +63,7 @@ export function Sidebar() {
 
         {/* Onboarding Hub */}
         <div>
-          <div className="flex items-center gap-3 px-3 py-2 text-sm text-emerald-400">
+          <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
             <GraduationCap className="w-4 h-4 shrink-0" />
             <span>Onboarding</span>
           </div>
@@ -80,7 +80,7 @@ export function Sidebar() {
                   href={href}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                    active ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
+                    active ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
                   )}
                 >
                   {label}
@@ -92,7 +92,7 @@ export function Sidebar() {
 
         {isCs && (
           <div>
-            <div className="flex items-center gap-3 px-3 py-2 text-sm text-emerald-400">
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
               <HeartHandshake className="w-4 h-4 shrink-0" />
               <span>Customer Success</span>
             </div>
@@ -109,7 +109,7 @@ export function Sidebar() {
                     href={href}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                      active ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
+                      active ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
                     )}
                   >
                     {label}
@@ -120,15 +120,11 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Task, Alert, Churn, Report (+ Attivazioni admin) */}
+        {/* Task, Alert, Churn, Report */}
         {[
           { href: '/tasks', label: 'Task', Icon: CheckSquare },
           { href: '/alerts', label: 'Alert', Icon: Bell },
           { href: '/churn-tracker', label: 'Churn Tracker', Icon: AlertTriangle },
-          ...(isAdmin ? [
-            { href: '/team-reports', label: 'Attivazioni - Report', Icon: Phone },
-            { href: '/training-reports', label: 'Training - Report', Icon: GraduationCap }
-          ] as const : []),
           { href: '/reports', label: 'Report', Icon: BarChart3 },
         ].map(({ href, label, Icon }) => (
           <Link
@@ -136,29 +132,59 @@ export function Sidebar() {
             href={href}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-              pathname === href ? 'bg-emerald-600 text-white' : 'text-emerald-300 hover:text-white hover:bg-emerald-900'
+              pathname === href ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />
             {label}
           </Link>
         ))}
+
+        {isAdmin && (
+          <div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
+              <Shield className="w-4 h-4 shrink-0" />
+              <span>Admin</span>
+            </div>
+            <div className="ml-4 space-y-0.5">
+              {[
+                { href: '/admin/team-reports', label: 'Attivazioni' },
+                { href: '/admin/training-reports', label: 'Training' },
+                { href: '/admin/prompts', label: 'Prompt e criteri' },
+              ].map(({ href, label }) => {
+                const active = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      active ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* DB usage */}
       <DbUsageBar />
 
       {/* User + sign out */}
-      <div className="px-3 py-4 border-t border-emerald-900">
+      <div className="px-3 py-4 border-t border-slate-800">
         {user && (
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
             <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-xs font-semibold text-white shrink-0">
               {(user.displayName ?? user.email ?? 'U')[0].toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-medium text-emerald-100 truncate">{user.displayName ?? user.email}</p>
+              <p className="text-xs font-medium text-slate-200 truncate">{user.displayName ?? user.email}</p>
               {isAdmin && (
-                <p className="mt-0.5 inline-flex items-center rounded-full bg-emerald-700/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+                <p className="mt-0.5 inline-flex items-center rounded-full bg-emerald-700/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
                   Admin
                 </p>
               )}
@@ -167,7 +193,7 @@ export function Sidebar() {
         )}
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-emerald-300 hover:text-white hover:bg-emerald-900 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
         >
           <LogOut className="w-4 h-4 shrink-0" />
           Esci
@@ -199,12 +225,12 @@ function DbUsageBar() {
   const color = usage.pct >= 90 ? 'bg-red-500' : usage.pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
 
   return (
-    <div className="px-4 py-3 border-t border-emerald-900">
-      <div className="flex items-center gap-2 text-[11px] text-emerald-400 mb-1.5">
+    <div className="px-4 py-3 border-t border-slate-800">
+      <div className="flex items-center gap-2 text-[11px] text-slate-500 mb-1.5">
         <Database className="w-3 h-3 shrink-0" />
         <span>{usage.pretty} ({usage.pct}%)</span>
       </div>
-      <div className="w-full h-1.5 bg-emerald-900 rounded-full overflow-hidden">
+      <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${color}`}
           style={{ width: `${Math.min(usage.pct, 100)}%` }}

@@ -2,7 +2,10 @@ import { NextRequest } from 'next/server';
 import { withAuth, createSuccessResponse, createErrorResponse, type AuthenticatedRequest } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 import { getOwnerByEmail } from '@/lib/config/owners';
-import { sqlContactPersonPickOrder } from '@/lib/db/contact-person-pick-order';
+import { sqlContactPersonPickOrder, sqlContactPersonPickOrderPortfolio } from '@/lib/db/contact-person-pick-order';
+import { planUsageFromRawProperties } from '@/lib/clients/plan-usage-from-raw';
+import { readAccountQualityScoreFromRaw } from '@/lib/clients/account-quality-traffic';
+import { getStageLabel, getStageConfig, getPipelineLabel, getTotalStages } from '@/lib/config/deal-pipelines';
 
 const ONBOARDING_SORT_EXPR = `CASE ob.status
   WHEN '1' THEN 1 WHEN '1011192836' THEN 2 WHEN '2' THEN 3
@@ -37,6 +40,11 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const offset = (page - 1) * pageSize;
     const q = searchParams.get('q') ?? '';
     const viewAll = searchParams.get('viewAll') === 'true';
+    const contactContext = searchParams.get('contactContext') ?? '';
+    const contactPickOrderSql =
+      contactContext === 'portfolio'
+        ? sqlContactPersonPickOrderPortfolio('paged.raw_properties')
+        : sqlContactPersonPickOrder('paged.raw_properties');
 
     const sortKey = searchParams.get('sort') ?? 'name';
     const sortDir = searchParams.get('dir') === 'desc' ? 'DESC' : 'ASC';
@@ -114,13 +122,17 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       contact_last_name: string | null;
       contact_email: string | null;
       contact_hubspot_id: string | null;
+      sd_pipeline_id: string | null; sd_stage_id: string | null; sd_deal_name: string | null; sd_amount: string | null; sd_close_date: string | null; sd_stage_entered_at: string | null;
+      ud_pipeline_id: string | null; ud_stage_id: string | null; ud_deal_name: string | null; ud_amount: string | null; ud_close_date: string | null; ud_stage_entered_at: string | null;
+      churn_risk: string | null;
+      raw_properties: unknown;
     }>(
       `WITH paged AS (
         SELECT
           c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
           c.renewal_date, c.cs_owner_id, c.onboarding_status,
           c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
-          c.last_contact_date, c.raw_properties,
+          c.last_contact_date, c.raw_properties, c.churn_risk,
           ob.hubspot_id AS ob_hubspot_id,
           ob.pipeline AS ob_pipeline,
           ob.status AS ob_status,
@@ -154,7 +166,9 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         cp.first_name AS contact_first_name,
         cp.last_name AS contact_last_name,
         cp.email AS contact_email,
-        cp.hubspot_id AS contact_hubspot_id
+        cp.hubspot_id AS contact_hubspot_id,
+        sd.pipeline_id AS sd_pipeline_id, sd.stage_id AS sd_stage_id, sd.deal_name AS sd_deal_name, sd.amount::text AS sd_amount, sd.close_date::text AS sd_close_date, sd.stage_entered_at::text AS sd_stage_entered_at,
+        ud.pipeline_id AS ud_pipeline_id, ud.stage_id AS ud_stage_id, ud.deal_name AS ud_deal_name, ud.amount::text AS ud_amount, ud.close_date::text AS ud_close_date, ud.stage_entered_at::text AS ud_stage_entered_at
       FROM paged
       LEFT JOIN LATERAL (
         SELECT hubspot_id, status, subject FROM tickets
@@ -174,9 +188,19 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         SELECT first_name, last_name, email, hubspot_id
         FROM contacts
         WHERE client_id = paged.id
-        ${sqlContactPersonPickOrder('paged.raw_properties')}
+        ${contactPickOrderSql}
         LIMIT 1
-      ) cp ON true`,
+      ) cp ON true
+      LEFT JOIN LATERAL (
+        SELECT pipeline_id, stage_id, deal_name, amount, close_date, stage_entered_at
+        FROM deals WHERE client_id = paged.id AND pipeline_id = '671838099'
+        ORDER BY updated_at DESC LIMIT 1
+      ) sd ON true
+      LEFT JOIN LATERAL (
+        SELECT pipeline_id, stage_id, deal_name, amount, close_date, stage_entered_at
+        FROM deals WHERE client_id = paged.id AND pipeline_id = '2683002088'
+        ORDER BY updated_at DESC LIMIT 1
+      ) ud ON true`,
       params
     );
 
@@ -193,6 +217,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       onboardingStatus: r.onboarding_status,
       onboardingStage: r.onboarding_stage,
       onboardingStageType: r.onboarding_stage_type,
+      churnRisk: r.churn_risk,
       purchaseSource: r.purchase_source,
       updatedAt: r.updated_at,
       onboardingTicket: r.ob_hubspot_id ? {
@@ -228,6 +253,30 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
             hubspotId: r.contact_hubspot_id,
           }
         : null,
+      planUsage: planUsageFromRawProperties(r.raw_properties),
+      accountQualityScore: readAccountQualityScoreFromRaw(r.raw_properties),
+      salesDeal: r.sd_pipeline_id ? (() => {
+        const cfg = getStageConfig(r.sd_pipeline_id!, r.sd_stage_id!);
+        const daysInStage = r.sd_stage_entered_at ? Math.floor((Date.now() - new Date(r.sd_stage_entered_at).getTime()) / 86_400_000) : null;
+        return {
+          pipelineId: r.sd_pipeline_id!, pipelineLabel: getPipelineLabel(r.sd_pipeline_id!),
+          stageLabel: getStageLabel(r.sd_pipeline_id!, r.sd_stage_id!), stageOrder: cfg?.displayOrder ?? 0,
+          totalStages: getTotalStages(r.sd_pipeline_id!), isClosed: cfg?.isClosed ?? false, isWon: cfg?.isWon ?? false,
+          dealName: r.sd_deal_name, amount: r.sd_amount ? parseFloat(r.sd_amount) : null,
+          closeDate: r.sd_close_date, daysInStage,
+        };
+      })() : null,
+      upsellingDeal: r.ud_pipeline_id ? (() => {
+        const cfg = getStageConfig(r.ud_pipeline_id!, r.ud_stage_id!);
+        const daysInStage = r.ud_stage_entered_at ? Math.floor((Date.now() - new Date(r.ud_stage_entered_at).getTime()) / 86_400_000) : null;
+        return {
+          pipelineId: r.ud_pipeline_id!, pipelineLabel: getPipelineLabel(r.ud_pipeline_id!),
+          stageLabel: getStageLabel(r.ud_pipeline_id!, r.ud_stage_id!), stageOrder: cfg?.displayOrder ?? 0,
+          totalStages: getTotalStages(r.ud_pipeline_id!), isClosed: cfg?.isClosed ?? false, isWon: cfg?.isWon ?? false,
+          dealName: r.ud_deal_name, amount: r.ud_amount ? parseFloat(r.ud_amount) : null,
+          closeDate: r.ud_close_date, daysInStage,
+        };
+      })() : null,
     }));
 
     return createSuccessResponse({ data, total, page, pageSize });

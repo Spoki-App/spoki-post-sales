@@ -31,11 +31,19 @@ export const ACTIVE_STATUSES: ChurnStatus[] = [
   'nuovo', 'contattato', 'nessuna_risposta', 'messaggio_wa', 'in_trattativa',
 ];
 
+// Mirror HubSpot companies.churn_reason property options (value === label, order matches HubSpot displayOrder)
 export const CHURN_REASONS = {
-  payment_failed: 'Pagamento fallito',
-  quality: 'Qualita del servizio',
-  seasonality: 'Stagionalita del business',
-  expectations: 'Aspettative non mantenute',
+  'Reducing business costs': 'Reducing business costs',
+  'No longer need the service': 'No longer need the service',
+  'Found a better alternative (competitor)': 'Found a better alternative (competitor)',
+  'Encountered technical problems': 'Encountered technical problems',
+  'Important features missing': 'Important features missing',
+  'Closing the business': 'Closing the business',
+  'Low usage of the service': 'Low usage of the service',
+  'Mai attivato': 'Mai attivato',
+  'Seasonal- Spot usage': 'Seasonal- Spot usage',
+  'Other': 'Other',
+  'Wrong expectations': 'Wrong expectations',
 } as const;
 
 export type ChurnReason = keyof typeof CHURN_REASONS;

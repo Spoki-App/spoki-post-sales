@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/Card';
 import { Search, ChevronRight } from 'lucide-react';
 import { formatMrrDisplay } from '@/lib/format/mrr';
 import { ContactPersonCell } from '@/components/clients/ContactPersonCell';
+import { PlanUsageCell } from '@/components/clients/PlanUsageCell';
+import type { ClientPlanUsage } from '@/types';
 
 export default function CsClientsPage() {
   const { token } = useAuthStore();
@@ -27,6 +29,7 @@ export default function CsClientsPage() {
       email: string | null;
       hubspotId: string;
     } | null;
+    planUsage?: ClientPlanUsage | null;
   }>>([]);
   const [q, setQ] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -107,7 +110,9 @@ export default function CsClientsPage() {
                       <ContactPersonCell contact={c.contactPerson} />
                     </td>
                     <td className="px-4 py-3">{formatMrrDisplay(c.mrr)}</td>
-                    <td className="px-4 py-3 text-slate-700">{c.plan ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      <PlanUsageCell plan={c.plan} planUsage={c.planUsage} />
+                    </td>
                     <td className="px-4 py-3">
                       <a
                         href={`https://app-eu1.hubspot.com/contacts/47964451/record/0-2/${c.hubspotId}`}

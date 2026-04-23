@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 import { sqlContactPersonPickOrder } from '@/lib/db/contact-person-pick-order';
+import { planUsageFromRawProperties } from '@/lib/clients/plan-usage-from-raw';
 import { requireCsOwner } from '@/lib/customer-success/require-cs-owner';
 
 export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequest) => {
@@ -47,8 +48,9 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       contact_last_name: string | null;
       contact_email: string | null;
       contact_hubspot_id: string | null;
+      raw_properties: unknown;
     }>(
-      `SELECT c.id, c.hubspot_id, c.name, c.domain, c.plan, c.mrr, c.renewal_date,
+      `SELECT c.id, c.hubspot_id, c.name, c.domain, c.plan, c.mrr, c.renewal_date, c.raw_properties,
               cp.first_name AS contact_first_name,
               cp.last_name AS contact_last_name,
               cp.email AS contact_email,
@@ -83,6 +85,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
             hubspotId: r.contact_hubspot_id,
           }
         : null,
+      planUsage: planUsageFromRawProperties(r.raw_properties),
     }));
 
     return createSuccessResponse({ data, total, page, pageSize });

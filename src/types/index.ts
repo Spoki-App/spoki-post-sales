@@ -24,7 +24,14 @@ export interface Client {
 
 export type HealthStatus = 'green' | 'yellow' | 'red';
 
+export interface ClientPlanUsage {
+  used: number;
+  included: number;
+}
+
 export interface ClientWithHealth extends Client {
+  onboardingStage?: string | null;
+  onboardingStageType?: 'normal' | 'warning' | 'danger' | string | null;
   onboardingTicket: {
     hubspotId: string;
     pipeline: string | null;
@@ -58,6 +65,11 @@ export interface ClientWithHealth extends Client {
     email: string | null;
     hubspotId: string;
   } | null;
+  planUsage?: ClientPlanUsage | null;
+  /** Raw value from optional HubSpot company property (`accountQualityScore`); used for quality dot when set. */
+  accountQualityScore?: string | null;
+  salesDeal: DealSummary | null;
+  upsellingDeal: DealSummary | null;
 }
 
 // ─── Contact ──────────────────────────────────────────────────────────────────
@@ -102,6 +114,7 @@ export interface Engagement {
   occurredAt: string;
   ownerId: string | null;
   title: string | null;
+  noteCategory: string | null;
 }
 
 // ─── Task ─────────────────────────────────────────────────────────────────────
@@ -198,6 +211,43 @@ export interface ClientGoal {
   mentionedAt: string | null;
   dueDate: string | null;
   createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Deal ─────────────────────────────────────────────────────────────────────
+export interface DealSummary {
+  pipelineId: string;
+  pipelineLabel: string;
+  stageLabel: string;
+  stageOrder: number;
+  totalStages: number;
+  isClosed: boolean;
+  isWon: boolean;
+  dealName: string | null;
+  amount: number | null;
+  closeDate: string | null;
+  daysInStage: number | null;
+}
+
+export interface ClientDeal {
+  id: string;
+  hubspotId: string;
+  clientId: string;
+  pipelineId: string;
+  pipelineLabel: string;
+  stageId: string;
+  stageLabel: string;
+  stageOrder: number;
+  totalStages: number;
+  isClosed: boolean;
+  isWon: boolean;
+  dealName: string | null;
+  amount: number | null;
+  closeDate: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  daysInStage: number | null;
   createdAt: string;
   updatedAt: string;
 }
