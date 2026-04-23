@@ -8,6 +8,8 @@ export const HUBSPOT_COMPANY_PROPS = {
   name: 'name',
   domain: 'domain',
   industry: 'industry',
+  /** Spoki vertical / industry segment (HubSpot internal name: verify in portal) */
+  industrySpoki: 'industry_spoki',
   city: 'city',
   country: 'country',
   phone: 'phone',

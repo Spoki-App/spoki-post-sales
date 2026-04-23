@@ -155,6 +155,111 @@ export const customerSuccessApi = {
     }),
 };
 
+// ─── Industries (Spoki vertical / industry_spoki) ───────────────────────────
+export const industriesApi = {
+  list: (token: string, params?: { viewAll?: boolean; section?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        industries: Array<{ key: string | null; label: string; clientCount: number }>;
+      }>
+    >(`/industries${s ? `?${s}` : ''}`, { token });
+  },
+  clients: (
+    token: string,
+    params?: {
+      q?: string;
+      viewAll?: boolean;
+      section?: string;
+      industry?: string;
+      sort?: string;
+      dir?: string;
+    }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set('q', params.q);
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    if (params?.industry !== undefined) qs.set('industry', params.industry);
+    if (params?.sort) qs.set('sort', params.sort);
+    if (params?.dir) qs.set('dir', params.dir);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        groups: Array<{
+          key: string | null;
+          label: string;
+          clients: Array<{
+            id: string;
+            hubspotId: string;
+            name: string;
+            industrySpoki: string | null;
+            plan: string | null;
+            mrr: number | null;
+            onboardingStatus: string | null;
+            churnRisk: string | null;
+            lastContactDate: string | null;
+            csm: { ownerId: string | null; label: string | null };
+            health: { score: number | null; status: string | null };
+            engagement90d: number;
+          }>;
+        }>;
+        totalClients: number;
+        limited: boolean;
+        maxRows: number;
+      }>
+    >(`/industries/clients${s ? `?${s}` : ''}`, { token });
+  },
+  library: (token: string, params?: { industry?: string; type?: 'use_case' | 'case_study' }) => {
+    const qs = new URLSearchParams();
+    if (params?.industry) qs.set('industry', params.industry);
+    if (params?.type) qs.set('type', params.type);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        items: Array<{
+          id: string;
+          contentType: 'use_case' | 'case_study';
+          sourceUrl: string;
+          title: string;
+          summary: string | null;
+          industrySpokiMatch: string | null;
+          metadata: unknown;
+          fetchedAt: string;
+        }>;
+      }>
+    >(`/industries/library${s ? `?${s}` : ''}`, { token });
+  },
+  benchmark: (token: string, industry: string, params?: { viewAll?: boolean; section?: string }) => {
+    const qs = new URLSearchParams({ industry });
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    return fetchApi<
+      ApiResponse<{
+        industry: string;
+        sampleSize: number;
+        benchmark: {
+          engagement90d: { p50: number | null; p75: number | null; min: number | null; max: number | null };
+          healthScore: { p50: number | null; p75: number | null };
+        };
+        topClients: Array<{
+          id: string;
+          name: string;
+          mrr: number | null;
+          engagement90d: number;
+          healthScore: number | null;
+          composite: number;
+          csmLabel: string | null;
+        }>;
+        usageNote: string;
+      }>
+    >(`/industries/benchmark?${qs.toString()}`, { token });
+  },
+};
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 export const tasksApi = {
   list: (token: string, params?: { page?: number; status?: string; assignedTo?: string; clientId?: string }) => {

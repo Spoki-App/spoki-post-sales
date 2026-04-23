@@ -81,6 +81,7 @@ export interface HSCompany {
   name: string | null;
   domain: string | null;
   industry: string | null;
+  industrySpoki: string | null;
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -303,6 +304,7 @@ class HubSpotClient {
           name: p[HUBSPOT_COMPANY_PROPS.name] ?? null,
           domain: p[HUBSPOT_COMPANY_PROPS.domain] ?? null,
           industry: p[HUBSPOT_COMPANY_PROPS.industry] ?? null,
+          industrySpoki: p[HUBSPOT_COMPANY_PROPS.industrySpoki] ?? null,
           city: p[HUBSPOT_COMPANY_PROPS.city] ?? null,
           country: p[HUBSPOT_COMPANY_PROPS.country] ?? null,
           phone: p[HUBSPOT_COMPANY_PROPS.phone] ?? null,
@@ -349,6 +351,7 @@ class HubSpotClient {
         name: p[HUBSPOT_COMPANY_PROPS.name] ?? null,
         domain: p[HUBSPOT_COMPANY_PROPS.domain] ?? null,
         industry: p[HUBSPOT_COMPANY_PROPS.industry] ?? null,
+        industrySpoki: p[HUBSPOT_COMPANY_PROPS.industrySpoki] ?? null,
         city: p[HUBSPOT_COMPANY_PROPS.city] ?? null,
         country: p[HUBSPOT_COMPANY_PROPS.country] ?? null,
         phone: p[HUBSPOT_COMPANY_PROPS.phone] ?? null,

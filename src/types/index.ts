@@ -5,6 +5,8 @@ export interface Client {
   name: string;
   domain: string | null;
   industry: string | null;
+  /** HubSpot `industry_spoki` (vertical Spoki), sincronizzato con CRM */
+  industrySpoki?: string | null;
   city: string | null;
   country: string | null;
   phone: string | null;

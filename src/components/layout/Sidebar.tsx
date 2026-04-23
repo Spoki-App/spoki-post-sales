@@ -18,6 +18,7 @@ import {
   ChevronDown,
   GraduationCap,
   HeartHandshake,
+  Factory,
   Database,
   AlertTriangle,
   Shield,
@@ -116,6 +117,18 @@ export function Sidebar() {
                   </Link>
                 );
               })}
+              <Link
+                href="/industries/clients"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                  pathname?.startsWith('/industries')
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                )}
+              >
+                <Factory className="w-4 h-4 shrink-0" />
+                Industries
+              </Link>
             </div>
           </div>
         )}
