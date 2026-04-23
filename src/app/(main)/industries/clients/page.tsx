@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { industriesApi } from '@/lib/api/client';
 import { formatMrrDisplay } from '@/lib/format/mrr';
@@ -23,8 +24,9 @@ type ClientRow = {
 
 type Group = { key: string | null; label: string; clients: ClientRow[] };
 
-export default function IndustriesClientsPage() {
+function IndustriesClientsContent() {
   const { token } = useAuthStore();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -39,6 +41,14 @@ export default function IndustriesClientsPage() {
     []
   );
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const qq = searchParams.get('q');
+    if (qq) {
+      setQ(qq);
+      setSearchInput(qq);
+    }
+  }, [searchParams]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -110,7 +120,7 @@ export default function IndustriesClientsPage() {
           </div>
           <button
             type="submit"
-            className="px-3 py-2 text-sm bg-slate-800 text-white rounded-lg hover:bg-slate-700"
+            className="rounded-lg bg-violet-600 px-3 py-2 text-sm text-white hover:bg-violet-700"
           >
             Cerca
           </button>
@@ -242,5 +252,13 @@ export default function IndustriesClientsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function IndustriesClientsPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-12 text-sm text-slate-500">Caricamento…</div>}>
+      <IndustriesClientsContent />
+    </Suspense>
   );
 }

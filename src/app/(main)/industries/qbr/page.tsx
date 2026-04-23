@@ -103,14 +103,14 @@ export default function IndustriesQbrPage() {
           <input type="checkbox" checked={viewAll} onChange={e => setViewAll(e.target.checked)} />
           Vedi tutto il portafoglio
         </label>
-        <button
-          type="button"
-          onClick={() => void runBenchmark()}
-          disabled={!industry.trim() || loading}
-          className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {loading ? 'Calcolo…' : 'Calcola benchmark'}
-        </button>
+          <button
+            type="button"
+            onClick={() => void runBenchmark()}
+            disabled={!industry.trim() || loading}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            {loading ? 'Calcolo…' : 'Calcola benchmark'}
+          </button>
       </div>
       {error && <p className="text-red-600 text-sm">{error}</p>}
 

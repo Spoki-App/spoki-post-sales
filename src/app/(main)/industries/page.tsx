@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation';
-
-export default function IndustriesIndexPage() {
-  redirect('/industries/clients');
+export default function IndustriesPanoramicaPage() {
+  return null;
 }

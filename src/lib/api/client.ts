@@ -157,6 +157,21 @@ export const customerSuccessApi = {
 
 // ─── Industries (Spoki vertical / industry_spoki) ───────────────────────────
 export const industriesApi = {
+  stats: (token: string, params?: { viewAll?: boolean; section?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        totalClients: number;
+        activeIndustries: number;
+        useCaseCount: number;
+        caseStudyCount: number;
+        qbrGeneratedCount: number;
+      }>
+    >(`/industries/stats${s ? `?${s}` : ''}`, { token });
+  },
   list: (token: string, params?: { viewAll?: boolean; section?: string }) => {
     const qs = new URLSearchParams();
     if (params?.viewAll) qs.set('viewAll', 'true');

@@ -58,21 +58,21 @@ export default function IndustriesLibraryPage() {
           value={industry}
           onChange={e => setIndustry(e.target.value)}
           placeholder="industry (match HubSpot)…"
-          className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 min-w-[200px]"
+          className="min-w-[200px] rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm shadow-sm"
         />
         <select
           value={type}
           onChange={e => setType(e.target.value)}
-          className="text-sm border border-slate-300 rounded-lg px-2 py-1.5"
+          className="rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm shadow-sm"
         >
           <option value="">Tutti i tipi</option>
-          <option value="use_case">Caso d’uso</option>
+          <option value="use_case">Caso d'uso</option>
           <option value="case_study">Caso studio</option>
         </select>
         <button
           type="button"
           onClick={() => void load()}
-          className="text-sm px-3 py-1.5 bg-slate-800 text-white rounded-lg hover:bg-slate-700"
+          className="rounded-xl bg-violet-600 px-3 py-1.5 text-sm text-white hover:bg-violet-700"
         >
           Applica
         </button>
