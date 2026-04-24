@@ -89,6 +89,11 @@ export const clientsApi = {
     fetchApi<ApiResponse<{ noteId: string; goalsCount: number }>>(`/clients/${id}/goals/sync-hubspot`, { method: 'POST', token }),
   getDeals: (token: string, id: string) =>
     fetchApi<ApiResponse<{ sales: ClientDeal[]; upselling: ClientDeal[] }>>(`/clients/${id}/deals`, { token }),
+  listOwners: (token: string) =>
+    fetchApi<ApiResponse<Array<{ id: string; firstName: string; lastName: string; team: string }>>>(
+      `/clients/owners`,
+      { token }
+    ),
 };
 
 // ─── Customer Success ──────────────────────────────────────────────────────────

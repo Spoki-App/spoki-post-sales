@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Search, ChevronRight, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { getOwnerName, getOwnerByEmail, isAdminEmail, HUBSPOT_OWNERS } from '@/lib/config/owners';
+import { getOwnerName, getOwnerByEmail, isAdminEmail } from '@/lib/config/owners';
 import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth, DealSummary } from '@/types';
@@ -176,8 +176,16 @@ export default function ClientsPage() {
   const [sortBy, setSortBy] = useState('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedOwner, setSelectedOwner] = useState('');
+  const [ownerOptions, setOwnerOptions] = useState<Array<{ id: string; firstName: string; lastName: string; team: string }>>([]);
 
-  const CS_OWNERS = Object.values(HUBSPOT_OWNERS).filter(o => o.team === 'Customer Success');
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    clientsApi.listOwners(token)
+      .then(res => { if (!cancelled) setOwnerOptions(res.data); })
+      .catch(err => console.error('Failed to load owner options', err));
+    return () => { cancelled = true; };
+  }, [token]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -263,7 +271,7 @@ export default function ClientsPage() {
           className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
         >
           <option value="">Tutti gli owner</option>
-          {CS_OWNERS.map(o => (
+          {ownerOptions.map(o => (
             <option key={o.id} value={o.id}>{o.firstName} {o.lastName}</option>
           ))}
         </select>
