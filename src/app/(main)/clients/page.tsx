@@ -1,17 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Search, ChevronRight, RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail, isAdminEmail } from '@/lib/config/owners';
-import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
-import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth, DealSummary } from '@/types';
 import { formatMrrDisplay } from '@/lib/format/mrr';
 
@@ -148,6 +146,104 @@ const CALL_DISPOSITIONS: Record<string, string> = {
   '17b47fee-58de-441e-a44c-c6300d46f273': 'Wrong number',
 };
 
+const SOURCE_OPTIONS = [
+  { value: 'Product Led', label: 'Product Led' },
+  { value: 'Sales Led', label: 'Sales Led' },
+  { value: 'Partner Led', label: 'Partner Led' },
+  { value: '__none__', label: '(non specificato)' },
+];
+
+const ONBOARDING_FILTER_OPTIONS = [
+  { value: '1', label: 'Deal Won' },
+  { value: '1011192836', label: 'Call Booked' },
+  { value: '2', label: 'Activated' },
+  { value: '2071331018', label: 'Training Booked' },
+  { value: '3071245506', label: 'Training Done' },
+  { value: '1709021391', label: 'Follow up 1' },
+  { value: '2724350144', label: 'Follow up 2' },
+  { value: '2724350145', label: 'Follow up 3' },
+  { value: '1005076483', label: 'Post Onboarding' },
+  { value: '1004887938', label: 'Onboarding Completed' },
+  { value: '2702656701', label: 'Activation Problems' },
+  { value: '2712273122', label: 'Activation Failed' },
+  { value: '1004887980', label: 'Never Activated' },
+  { value: '4524518615', label: 'Free' },
+  { value: '4524518616', label: 'Withdrawal' },
+  { value: '__none__', label: '(nessun ticket)' },
+];
+
+const HAS_TICKETS_OPTIONS = [
+  { value: 'yes', label: 'Con ticket aperti' },
+  { value: 'no', label: 'Senza ticket aperti' },
+];
+
+function ColumnFilterDropdown({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+  const isActive = !!value;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide whitespace-nowrap ${
+          isActive ? 'text-emerald-600' : 'text-slate-500'
+        }`}
+      >
+        {isActive && selected ? selected.label : label}
+        <ChevronDown className={`w-3 h-3 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white rounded-lg shadow-lg border border-slate-200 min-w-[190px] py-1 max-h-64 overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => { onChange(''); setOpen(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 ${
+              !value ? 'font-semibold text-emerald-600' : 'text-slate-600'
+            }`}
+          >
+            Tutti
+          </button>
+          <div className="border-t border-slate-100 my-0.5" />
+          {options.map(o => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => { onChange(o.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 ${
+                value === o.value ? 'font-semibold text-emerald-600' : 'text-slate-600'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RenewalCell({ date }: { date: string | null }) {
   if (!date) return <span className="text-slate-400">—</span>;
   const days = differenceInDays(new Date(date), new Date());
@@ -173,9 +269,12 @@ export default function ClientsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [sortBy, setSortBy] = useState('name');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [selectedOwner, setSelectedOwner] = useState('');
+  const [filterSource, setFilterSource] = useState('');
+  const [filterPlan, setFilterPlan] = useState('');
+  const [filterOwner, setFilterOwner] = useState('');
+  const [filterOnboardingStage, setFilterOnboardingStage] = useState('');
+  const [filterHasTickets, setFilterHasTickets] = useState('');
+  const [filterPipelineDays, setFilterPipelineDays] = useState('');
   const [ownerOptions, setOwnerOptions] = useState<Array<{ id: string; firstName: string; lastName: string; team: string }>>([]);
 
   useEffect(() => {
@@ -186,6 +285,14 @@ export default function ClientsPage() {
       .catch(err => console.error('Failed to load owner options', err));
     return () => { cancelled = true; };
   }, [token]);
+
+  const planOptions = useMemo(() => {
+    const plans = [...new Set(clients.map(c => c.plan).filter(Boolean))].sort() as string[];
+    return [
+      ...plans.map(p => ({ value: p, label: p })),
+      { value: '__none__', label: '(nessun piano)' },
+    ];
+  }, [clients]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -198,9 +305,16 @@ export default function ClientsPage() {
 
     try {
       const params: Parameters<typeof clientsApi.list>[1] = {
-        page, q, sort: sortBy, dir: sortDir,
-        ...(isAdmin || !hasOwnerProfile || selectedOwner ? { viewAll: true } : {}),
-        ...(selectedOwner ? { owner: selectedOwner } : {}),
+        page, q,
+        sort: filterPipelineDays ? 'pipeline' : 'name',
+        dir: filterPipelineDays ? 'desc' : 'asc',
+        ...(isAdmin || !hasOwnerProfile || filterOwner ? { viewAll: true } : {}),
+        ...(filterOwner ? { owner: filterOwner } : {}),
+        ...(filterSource ? { source: filterSource } : {}),
+        ...(filterPlan ? { plan: filterPlan } : {}),
+        ...(filterOnboardingStage ? { onboardingStage: filterOnboardingStage } : {}),
+        ...(filterHasTickets ? { hasTickets: filterHasTickets } : {}),
+        ...(filterPipelineDays ? { pipelineDays: filterPipelineDays } : {}),
       };
       const res = await clientsApi.list(token, params, controller.signal);
       setClients(res.data);
@@ -216,7 +330,7 @@ export default function ClientsPage() {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [token, page, q, isAdmin, hasOwnerProfile, sortBy, sortDir, selectedOwner]);
+  }, [token, page, q, isAdmin, hasOwnerProfile, filterOwner, filterSource, filterPlan, filterOnboardingStage, filterHasTickets, filterPipelineDays]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -265,16 +379,6 @@ export default function ClientsPage() {
             Cerca
           </button>
         </form>
-        <select
-          value={selectedOwner}
-          onChange={e => { setSelectedOwner(e.target.value); setPage(1); }}
-          className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-        >
-          <option value="">Tutti gli owner</option>
-          {ownerOptions.map(o => (
-            <option key={o.id} value={o.id}>{o.firstName} {o.lastName}</option>
-          ))}
-        </select>
       </div>
 
 
@@ -296,43 +400,65 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                {([
-                  { label: 'Azienda', key: 'name' },
-                  { label: 'Fonte', key: 'source' },
-                  { label: 'Deal Sales', key: '' },
-                  { label: 'Deal Upselling', key: '' },
-                  { label: 'Onboarding', key: 'onboarding' },
-                  { label: 'Giorni in pipeline', key: 'pipeline' },
-                  { label: 'MRR', key: 'mrr' },
-                  { label: 'Piano', key: 'plan' },
-                  { label: 'Company Owner', key: 'owner' },
-                  { label: 'Ticket Support', key: 'support' },
-                  { label: 'Ultimo contatto', key: 'lastContact' },
-                  { label: 'Rinnovo', key: 'renewal' },
-                ] as const).map(col => (
-                  <th
-                    key={col.label}
-                    className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide ${col.key ? 'cursor-pointer select-none hover:bg-slate-50 transition-colors' : ''} ${sortBy === col.key ? 'text-emerald-600' : 'text-slate-500'}`}
-                    onClick={col.key ? () => {
-                      if (sortBy === col.key) {
-                        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortBy(col.key);
-                        setSortDir(['mrr', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support'].includes(col.key) ? 'desc' : 'asc');
-                      }
-                      setPage(1);
-                    } : undefined}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {col.label}
-                      {col.key && (
-                        sortBy === col.key
-                          ? sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />
-                          : <ChevronsUpDown className="w-3.5 h-3.5 opacity-30" />
-                      )}
-                    </span>
-                  </th>
-                ))}
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Azienda</th>
+                <th className="px-4 py-3 text-left">
+                  <ColumnFilterDropdown
+                    label="Fonte"
+                    options={SOURCE_OPTIONS}
+                    value={filterSource}
+                    onChange={v => { setFilterSource(v); setPage(1); }}
+                  />
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Deal Sales</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Deal Upselling</th>
+                <th className="px-4 py-3 text-left">
+                  <ColumnFilterDropdown
+                    label="Onboarding"
+                    options={ONBOARDING_FILTER_OPTIONS}
+                    value={filterOnboardingStage}
+                    onChange={v => { setFilterOnboardingStage(v); setPage(1); }}
+                  />
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <ColumnFilterDropdown
+                    label="Giorni in pipeline"
+                    options={[
+                      { value: '0-30', label: '0–30 giorni' },
+                      { value: '31-60', label: '31–60 giorni' },
+                      { value: '61-90', label: '61–90 giorni' },
+                      { value: '91+', label: '91+ giorni' },
+                    ]}
+                    value={filterPipelineDays}
+                    onChange={v => { setFilterPipelineDays(v); setPage(1); }}
+                  />
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">MRR</th>
+                <th className="px-4 py-3 text-left">
+                  <ColumnFilterDropdown
+                    label="Piano"
+                    options={planOptions}
+                    value={filterPlan}
+                    onChange={v => { setFilterPlan(v); setPage(1); }}
+                  />
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <ColumnFilterDropdown
+                    label="Company Owner"
+                    options={ownerOptions.map(o => ({ value: o.id, label: `${o.firstName} ${o.lastName}` }))}
+                    value={filterOwner}
+                    onChange={v => { setFilterOwner(v); setPage(1); }}
+                  />
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <ColumnFilterDropdown
+                    label="Ticket Support"
+                    options={HAS_TICKETS_OPTIONS}
+                    value={filterHasTickets}
+                    onChange={v => { setFilterHasTickets(v); setPage(1); }}
+                  />
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Ultimo contatto</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Rinnovo</th>
                 <th className="w-10" />
               </tr>
             </thead>

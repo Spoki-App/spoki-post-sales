@@ -45,7 +45,7 @@ async function fetchApi<T>(
 export const clientsApi = {
   list: (
     token: string,
-    params?: { page?: number; q?: string; owner?: string; onboardingOwner?: string; viewAll?: boolean; section?: string; sort?: string; dir?: string },
+    params?: { page?: number; q?: string; owner?: string; onboardingOwner?: string; viewAll?: boolean; section?: string; sort?: string; dir?: string; source?: string; plan?: string; onboardingStage?: string; hasTickets?: string; pipelineDays?: string },
     signal?: AbortSignal
   ) => {
     const qs = new URLSearchParams(params as unknown as Record<string, string>).toString();

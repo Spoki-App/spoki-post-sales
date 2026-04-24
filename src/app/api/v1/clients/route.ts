@@ -52,6 +52,11 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     // section: 'all' | 'onboarding' | 'company'
     const owner = searchParams.get('owner') ?? '';
     const onboardingOwner = searchParams.get('onboardingOwner') ?? '';
+    const source = searchParams.get('source') ?? '';
+    const plan = searchParams.get('plan') ?? '';
+    const onboardingStage = searchParams.get('onboardingStage') ?? '';
+    const hasTickets = searchParams.get('hasTickets') ?? '';
+    const pipelineDays = searchParams.get('pipelineDays') ?? '';
 
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -69,6 +74,44 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     if (onboardingOwner) {
       conditions.push(`c.onboarding_owner_id = $${idx++}`);
       params.push(onboardingOwner);
+    }
+    if (source) {
+      if (source === '__none__') {
+        conditions.push(`(c.purchase_source IS NULL OR c.purchase_source = '')`);
+      } else {
+        conditions.push(`c.purchase_source = $${idx++}`);
+        params.push(source);
+      }
+    }
+    if (plan) {
+      if (plan === '__none__') {
+        conditions.push(`(c.plan IS NULL OR c.plan = '')`);
+      } else {
+        conditions.push(`c.plan = $${idx++}`);
+        params.push(plan);
+      }
+    }
+    if (onboardingStage) {
+      if (onboardingStage === '__none__') {
+        conditions.push(`ob.status IS NULL`);
+      } else {
+        conditions.push(`ob.status = $${idx++}`);
+        params.push(onboardingStage);
+      }
+    }
+    if (hasTickets === 'yes') {
+      conditions.push(`(SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') > 0`);
+    } else if (hasTickets === 'no') {
+      conditions.push(`(SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') = 0`);
+    }
+    if (pipelineDays === '0-30') {
+      conditions.push(`ob.activated_at >= NOW() - INTERVAL '30 days'`);
+    } else if (pipelineDays === '31-60') {
+      conditions.push(`ob.activated_at >= NOW() - INTERVAL '60 days' AND ob.activated_at < NOW() - INTERVAL '30 days'`);
+    } else if (pipelineDays === '61-90') {
+      conditions.push(`ob.activated_at >= NOW() - INTERVAL '90 days' AND ob.activated_at < NOW() - INTERVAL '60 days'`);
+    } else if (pipelineDays === '91+') {
+      conditions.push(`ob.activated_at < NOW() - INTERVAL '90 days'`);
     }
     // Section filter: which owner field to match against the logged-in user
     if (ownerFilter) {
@@ -89,7 +132,13 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countRes = await pgQuery<{ count: string }>(
-      `SELECT COUNT(*) FROM clients c ${where}`,
+      `SELECT COUNT(*) FROM clients c
+       LEFT JOIN LATERAL (
+         SELECT status, activated_at FROM tickets
+         WHERE client_id = c.id AND pipeline = '0'
+         ORDER BY opened_at DESC LIMIT 1
+       ) ob ON true
+       ${where}`,
       params
     );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
