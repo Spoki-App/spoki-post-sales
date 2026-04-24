@@ -267,7 +267,7 @@ export default function OnboardingClientsPage() {
                 {([
                   { label: 'Azienda', key: 'name' },
                   {
-                    label: 'Quality score',
+                    label: 'Phone Status',
                     key: '',
                     thClass: 'w-14 max-w-[4.5rem] shrink-0 px-2 py-3 text-center',
                   },

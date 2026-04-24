@@ -25,6 +25,18 @@ function sqlPrimaryContactHubspotIdExpr(rawPropertiesRef: string): string {
   return 'NULL::text';
 }
 
+/**
+ * Rows considered for one displayed contact: linked to the client, or matching company primary HubSpot vid
+ * in `raw_properties` (handles `contacts.client_id` NULL / stale after HubSpot sync).
+ */
+export function sqlContactPersonPickWhereLinkedOrPrimary(
+  clientIdRef: string,
+  rawPropertiesRef: string
+): string {
+  const primaryIdExpr = sqlPrimaryContactHubspotIdExpr(rawPropertiesRef);
+  return `(client_id = ${clientIdRef} OR ((${primaryIdExpr}) IS NOT NULL AND hubspot_id = (${primaryIdExpr})))`;
+}
+
 /** Builds a single-quoted SQL LIKE pattern `'%a%b%c%'` from a config label; rejects unexpected characters. */
 function sqlLikePatternLiteralFromRoleLabel(label: string): string | null {
   const cleaned = label

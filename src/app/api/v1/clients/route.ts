@@ -2,7 +2,11 @@ import { NextRequest } from 'next/server';
 import { withAuth, createSuccessResponse, createErrorResponse, type AuthenticatedRequest } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 import { getOwnerByEmail } from '@/lib/config/owners';
-import { sqlContactPersonPickOrder, sqlContactPersonPickOrderPortfolio } from '@/lib/db/contact-person-pick-order';
+import {
+  sqlContactPersonPickOrder,
+  sqlContactPersonPickOrderPortfolio,
+  sqlContactPersonPickWhereLinkedOrPrimary,
+} from '@/lib/db/contact-person-pick-order';
 import { planUsageFromRawProperties } from '@/lib/clients/plan-usage-from-raw';
 import { readAccountQualityScoreFromRaw } from '@/lib/clients/account-quality-traffic';
 import { getStageLabel, getStageConfig, getPipelineLabel, getTotalStages } from '@/lib/config/deal-pipelines';
@@ -187,7 +191,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       LEFT JOIN LATERAL (
         SELECT first_name, last_name, email, hubspot_id
         FROM contacts
-        WHERE client_id = paged.id
+        WHERE ${sqlContactPersonPickWhereLinkedOrPrimary('paged.id', 'paged.raw_properties')}
         ${contactPickOrderSql}
         LIMIT 1
       ) cp ON true

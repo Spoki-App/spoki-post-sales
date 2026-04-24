@@ -6,7 +6,7 @@ import {
   type AuthenticatedRequest,
 } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
-import { sqlContactPersonPickOrder } from '@/lib/db/contact-person-pick-order';
+import { sqlContactPersonPickOrder, sqlContactPersonPickWhereLinkedOrPrimary } from '@/lib/db/contact-person-pick-order';
 import { planUsageFromRawProperties } from '@/lib/clients/plan-usage-from-raw';
 import { requireCsOwner } from '@/lib/customer-success/require-cs-owner';
 
@@ -59,7 +59,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
        LEFT JOIN LATERAL (
          SELECT first_name, last_name, email, hubspot_id
          FROM contacts
-         WHERE client_id = c.id
+         WHERE ${sqlContactPersonPickWhereLinkedOrPrimary('c.id', 'c.raw_properties')}
          ${sqlContactPersonPickOrder('c.raw_properties')}
          LIMIT 1
        ) cp ON true
