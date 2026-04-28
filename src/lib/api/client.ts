@@ -634,6 +634,48 @@ export const dashboardDataApi = {
     }>>(`/dashboard-data/forecast?account_id=${accountId}`, { token }),
 };
 
+// ─── AI Monitoring (Langfuse, admin) ─────────────────────────────────────────
+import type {
+  LangfuseIdType,
+  LangfuseLookupResponse,
+  LangfuseTraceDetail,
+} from '@/types/langfuse';
+
+export type {
+  LangfuseIdType,
+  LangfuseLookupResponse,
+  LangfuseTrace,
+  LangfuseTraceDetail,
+  LangfuseObservation,
+  LangfuseObservationType,
+  LangfuseLevel,
+  LangfuseUsage,
+} from '@/types/langfuse';
+
+export const aiMonitoringApi = {
+  lookup: (
+    token: string,
+    params: { idType: LangfuseIdType; id: string; from?: string; to?: string; page?: number; limit?: number },
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set('idType', params.idType);
+    qs.set('id', params.id);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    return fetchApi<ApiResponse<LangfuseLookupResponse>>(
+      `/admin/ai-monitoring/lookup?${qs.toString()}`,
+      { token },
+    );
+  },
+  getTrace: (token: string, id: string) =>
+    fetchApi<ApiResponse<LangfuseTraceDetail>>(
+      `/admin/ai-monitoring/trace/${encodeURIComponent(id)}`,
+      { token },
+    ),
+};
+
 // ─── Churn Tracker ────────────────────────────────────────────────────────────
 import type { ChurnTrackerRecord, ChurnNote, ChurnSummary } from '@/types/churn';
 
