@@ -45,7 +45,22 @@ async function fetchApi<T>(
 export const clientsApi = {
   list: (
     token: string,
-    params?: { page?: number; q?: string; owner?: string; onboardingOwner?: string; viewAll?: boolean; section?: string; sort?: string; dir?: string },
+    params?: {
+      page?: number;
+      q?: string;
+      owner?: string;
+      onboardingOwner?: string;
+      viewAll?: boolean;
+      section?: string;
+      sort?: string;
+      dir?: string;
+      source?: string;
+      plan?: string;
+      onboardingStage?: string;
+      hasTickets?: string;
+      pipelineDays?: string;
+      contactContext?: 'portfolio';
+    },
     signal?: AbortSignal
   ) => {
     const qs = new URLSearchParams(params as unknown as Record<string, string>).toString();
@@ -89,6 +104,13 @@ export const clientsApi = {
     fetchApi<ApiResponse<{ noteId: string; goalsCount: number }>>(`/clients/${id}/goals/sync-hubspot`, { method: 'POST', token }),
   getDeals: (token: string, id: string) =>
     fetchApi<ApiResponse<{ sales: ClientDeal[]; upselling: ClientDeal[] }>>(`/clients/${id}/deals`, { token }),
+  listOwners: (token: string) =>
+    fetchApi<ApiResponse<Array<{ id: string; firstName: string; lastName: string; team: string }>>>(
+      `/clients/owners`,
+      { token }
+    ),
+  listPlanOptions: (token: string) =>
+    fetchApi<ApiResponse<string[]>>(`/clients/plan-options`, { token }),
 };
 
 // ─── Customer Success ──────────────────────────────────────────────────────────
@@ -124,6 +146,12 @@ export const customerSuccessApi = {
         plan: string | null;
         mrr: number | null;
         renewalDate: string | null;
+        contactPerson: {
+          firstName: string | null;
+          lastName: string | null;
+          email: string | null;
+          hubspotId: string;
+        } | null;
       }>
     >(`/customer-success/clients${qs ? `?${qs}` : ''}`, { token });
   },
@@ -627,6 +655,48 @@ export const dashboardDataApi = {
       predictedOutcome: 'renew' | 'churn' | 'expansion' | 'contraction';
       confidence: number;
     }>>(`/dashboard-data/forecast?account_id=${accountId}`, { token }),
+};
+
+// ─── AI Monitoring (Langfuse, admin) ─────────────────────────────────────────
+import type {
+  LangfuseIdType,
+  LangfuseLookupResponse,
+  LangfuseTraceDetail,
+} from '@/types/langfuse';
+
+export type {
+  LangfuseIdType,
+  LangfuseLookupResponse,
+  LangfuseTrace,
+  LangfuseTraceDetail,
+  LangfuseObservation,
+  LangfuseObservationType,
+  LangfuseLevel,
+  LangfuseUsage,
+} from '@/types/langfuse';
+
+export const aiMonitoringApi = {
+  lookup: (
+    token: string,
+    params: { idType: LangfuseIdType; id: string; from?: string; to?: string; page?: number; limit?: number },
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set('idType', params.idType);
+    qs.set('id', params.id);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    return fetchApi<ApiResponse<LangfuseLookupResponse>>(
+      `/admin/ai-monitoring/lookup?${qs.toString()}`,
+      { token },
+    );
+  },
+  getTrace: (token: string, id: string) =>
+    fetchApi<ApiResponse<LangfuseTraceDetail>>(
+      `/admin/ai-monitoring/trace/${encodeURIComponent(id)}`,
+      { token },
+    ),
 };
 
 // ─── Churn Tracker ────────────────────────────────────────────────────────────

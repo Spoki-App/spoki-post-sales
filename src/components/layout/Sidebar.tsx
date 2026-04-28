@@ -151,6 +151,7 @@ export function Sidebar() {
                 { href: '/admin/team-reports', label: 'Attivazioni' },
                 { href: '/admin/training-reports', label: 'Training' },
                 { href: '/admin/prompts', label: 'Prompt e criteri' },
+                { href: '/admin/ai-monitoring', label: 'Monitoraggio AI' },
               ].map(({ href, label }) => {
                 const active = pathname === href;
                 return (

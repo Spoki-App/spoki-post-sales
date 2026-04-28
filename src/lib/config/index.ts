@@ -59,6 +59,11 @@ export const config = {
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   },
+  langfuse: {
+    baseUrl: (process.env.LANGFUSE_BASE_URL || 'https://cloud.langfuse.com').replace(/\/$/, ''),
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY || '',
+    secretKey: process.env.LANGFUSE_SECRET_KEY || '',
+  },
   accountBrief: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -72,12 +77,13 @@ export const config = {
   },
 };
 
-export function isConfigured(service: 'hubspot' | 'postgres' | 'metabase' | 'stripe' | 'gmail' | 'fathom'): boolean {
+export function isConfigured(service: 'hubspot' | 'postgres' | 'metabase' | 'stripe' | 'gmail' | 'fathom' | 'langfuse'): boolean {
   if (service === 'hubspot') return !!config.hubspot.apiKey;
   if (service === 'postgres') return !!(config.postgres.host || config.postgres.instanceConnectionName) && !!config.postgres.user;
   if (service === 'metabase') return !!config.metabase.apiKey;
   if (service === 'stripe') return !!config.stripe.apiKey;
   if (service === 'gmail') return !!config.gmail.user && !!config.gmail.appPassword;
   if (service === 'fathom') return !!config.fathom.apiKey;
+  if (service === 'langfuse') return !!config.langfuse.publicKey && !!config.langfuse.secretKey;
   return false;
 }

@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server';
 import { withAuth, createSuccessResponse, createErrorResponse, type AuthenticatedRequest } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 import { getOwnerByEmail } from '@/lib/config/owners';
+import { sqlContactPersonLateralFromClientContacts } from '@/lib/db/contact-person-pick-order';
+import { planUsageFromRawProperties } from '@/lib/clients/plan-usage-from-raw';
+import { readAccountQualityScoreFromRaw } from '@/lib/clients/account-quality-traffic';
 import { getStageLabel, getStageConfig, getPipelineLabel, getTotalStages } from '@/lib/config/deal-pipelines';
 
 const ONBOARDING_SORT_EXPR = `CASE ob.status
@@ -37,6 +40,10 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const offset = (page - 1) * pageSize;
     const q = searchParams.get('q') ?? '';
     const viewAll = searchParams.get('viewAll') === 'true';
+    const contactContext = searchParams.get('contactContext') ?? '';
+    const contactPersonLateralSql = sqlContactPersonLateralFromClientContacts('paged.id', {
+      portfolio: contactContext === 'portfolio',
+    });
 
     const sortKey = searchParams.get('sort') ?? 'name';
     const sortDir = searchParams.get('dir') === 'desc' ? 'DESC' : 'ASC';
@@ -52,6 +59,11 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     // section: 'all' | 'onboarding' | 'company'
     const owner = searchParams.get('owner') ?? '';
     const onboardingOwner = searchParams.get('onboardingOwner') ?? '';
+    const source = searchParams.get('source') ?? '';
+    const plan = searchParams.get('plan') ?? '';
+    const onboardingStage = searchParams.get('onboardingStage') ?? '';
+    const hasTickets = searchParams.get('hasTickets') ?? '';
+    const pipelineDays = searchParams.get('pipelineDays') ?? '';
 
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -69,6 +81,44 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     if (onboardingOwner) {
       conditions.push(`c.onboarding_owner_id = $${idx++}`);
       params.push(onboardingOwner);
+    }
+    if (source) {
+      if (source === '__none__') {
+        conditions.push(`(c.purchase_source IS NULL OR c.purchase_source = '')`);
+      } else {
+        conditions.push(`c.purchase_source = $${idx++}`);
+        params.push(source);
+      }
+    }
+    if (plan) {
+      if (plan === '__none__') {
+        conditions.push(`(c.plan IS NULL OR c.plan = '')`);
+      } else {
+        conditions.push(`c.plan = $${idx++}`);
+        params.push(plan);
+      }
+    }
+    if (onboardingStage) {
+      if (onboardingStage === '__none__') {
+        conditions.push(`ob.status IS NULL`);
+      } else {
+        conditions.push(`ob.status = $${idx++}`);
+        params.push(onboardingStage);
+      }
+    }
+    if (hasTickets === 'yes') {
+      conditions.push(`(SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') > 0`);
+    } else if (hasTickets === 'no') {
+      conditions.push(`(SELECT COUNT(*) FROM tickets t WHERE t.client_id = c.id AND t.closed_at IS NULL AND t.pipeline = '1249920186') = 0`);
+    }
+    if (pipelineDays === '0-30') {
+      conditions.push(`ob.activated_at >= NOW() - INTERVAL '30 days'`);
+    } else if (pipelineDays === '31-60') {
+      conditions.push(`ob.activated_at >= NOW() - INTERVAL '60 days' AND ob.activated_at < NOW() - INTERVAL '30 days'`);
+    } else if (pipelineDays === '61-90') {
+      conditions.push(`ob.activated_at >= NOW() - INTERVAL '90 days' AND ob.activated_at < NOW() - INTERVAL '60 days'`);
+    } else if (pipelineDays === '91+') {
+      conditions.push(`ob.activated_at < NOW() - INTERVAL '90 days'`);
     }
     // Section filter: which owner field to match against the logged-in user
     if (ownerFilter) {
@@ -89,7 +139,13 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countRes = await pgQuery<{ count: string }>(
-      `SELECT COUNT(*) FROM clients c ${where}`,
+      `SELECT COUNT(*) FROM clients c
+       LEFT JOIN LATERAL (
+         SELECT status, activated_at FROM tickets
+         WHERE client_id = c.id AND pipeline = '0'
+         ORDER BY opened_at DESC LIMIT 1
+       ) ob ON true
+       ${where}`,
       params
     );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
@@ -110,15 +166,21 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       last_engagement_hubspot_id: string | null; last_engagement_type: string | null; last_engagement_at: string | null; last_engagement_owner: string | null;
       last_engagement_email_from: string | null; last_engagement_email_to: string | null;
       last_engagement_call_direction: string | null; last_engagement_call_disposition: string | null; last_engagement_call_title: string | null;
+      contact_first_name: string | null;
+      contact_last_name: string | null;
+      contact_email: string | null;
+      contact_hubspot_id: string | null;
       sd_pipeline_id: string | null; sd_stage_id: string | null; sd_deal_name: string | null; sd_amount: string | null; sd_close_date: string | null; sd_stage_entered_at: string | null;
       ud_pipeline_id: string | null; ud_stage_id: string | null; ud_deal_name: string | null; ud_amount: string | null; ud_close_date: string | null; ud_stage_entered_at: string | null;
+      churn_risk: string | null;
+      raw_properties: unknown;
     }>(
       `WITH paged AS (
         SELECT
           c.id, c.hubspot_id, c.name, c.domain, c.industry, c.plan, c.mrr,
           c.renewal_date, c.cs_owner_id, c.onboarding_status,
           c.onboarding_stage, c.onboarding_stage_type, c.purchase_source, c.updated_at,
-          c.last_contact_date,
+          c.last_contact_date, c.raw_properties, c.churn_risk,
           ob.hubspot_id AS ob_hubspot_id,
           ob.pipeline AS ob_pipeline,
           ob.status AS ob_status,
@@ -149,6 +211,10 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         le.raw_properties::jsonb->>'hs_call_direction' AS last_engagement_call_direction,
         le.raw_properties::jsonb->>'hs_call_disposition' AS last_engagement_call_disposition,
         le.raw_properties::jsonb->>'hs_call_title' AS last_engagement_call_title,
+        cp.first_name AS contact_first_name,
+        cp.last_name AS contact_last_name,
+        cp.email AS contact_email,
+        cp.hubspot_id AS contact_hubspot_id,
         sd.pipeline_id AS sd_pipeline_id, sd.stage_id AS sd_stage_id, sd.deal_name AS sd_deal_name, sd.amount::text AS sd_amount, sd.close_date::text AS sd_close_date, sd.stage_entered_at::text AS sd_stage_entered_at,
         ud.pipeline_id AS ud_pipeline_id, ud.stage_id AS ud_stage_id, ud.deal_name AS ud_deal_name, ud.amount::text AS ud_amount, ud.close_date::text AS ud_close_date, ud.stage_entered_at::text AS ud_stage_entered_at
       FROM paged
@@ -166,6 +232,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
           ))
         ORDER BY e.occurred_at DESC LIMIT 1
       ) le ON true
+      ${contactPersonLateralSql}
       LEFT JOIN LATERAL (
         SELECT pipeline_id, stage_id, deal_name, amount, close_date, stage_entered_at
         FROM deals WHERE client_id = paged.id AND pipeline_id = '671838099'
@@ -192,6 +259,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       onboardingStatus: r.onboarding_status,
       onboardingStage: r.onboarding_stage,
       onboardingStageType: r.onboarding_stage_type,
+      churnRisk: r.churn_risk,
       purchaseSource: r.purchase_source,
       updatedAt: r.updated_at,
       onboardingTicket: r.ob_hubspot_id ? {
@@ -219,6 +287,16 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         callDisposition: r.last_engagement_call_disposition || null,
         callTitle: r.last_engagement_call_title || null,
       } : null,
+      contactPerson: r.contact_hubspot_id
+        ? {
+            firstName: r.contact_first_name,
+            lastName: r.contact_last_name,
+            email: r.contact_email,
+            hubspotId: r.contact_hubspot_id,
+          }
+        : null,
+      planUsage: planUsageFromRawProperties(r.raw_properties),
+      accountQualityScore: readAccountQualityScoreFromRaw(r.raw_properties),
       salesDeal: r.sd_pipeline_id ? (() => {
         const cfg = getStageConfig(r.sd_pipeline_id!, r.sd_stage_id!);
         const daysInStage = r.sd_stage_entered_at ? Math.floor((Date.now() - new Date(r.sd_stage_entered_at).getTime()) / 86_400_000) : null;

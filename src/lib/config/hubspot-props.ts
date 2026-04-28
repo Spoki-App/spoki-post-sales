@@ -28,9 +28,31 @@ export const HUBSPOT_COMPANY_PROPS = {
   contractStartDate: 'contract_start_date',
   contractValue: 'contract_value',       // Total contract value (ACV)
   churnRisk: 'churn_risk',              // manual churn risk flag if set
+  /**
+   * Optional company property for account quality (number 0–100, or picklist text aligned with churn colours).
+   * When set and sync runs, value is in `clients.raw_properties` and takes priority over `churn_risk` for the quality dot.
+   */
+  accountQualityScore: '',
   /** Company property "Activation call" (date) — internal name from HubSpot */
   activationCall: 'activation_call',
+  /**
+   * HubSpot company property whose value is the **Contact record ID** (numeric string) of the primary contact.
+   * Optional when sync writes {@link SYNC_RAW_PRIMARY_CONTACT_HUBSPOT_ID_KEY} from native CRM associations.
+   */
+  primaryContactHubspotId: '',
+  conversationsUsed: '',
+  conversationsIncluded: '',
 } as const;
+
+/**
+ * Injected into `clients.raw_properties` during company sync from HubSpot associations (company → primary contact, typeId 2). Not a HubSpot property.
+ */
+export const SYNC_RAW_PRIMARY_CONTACT_HUBSPOT_ID_KEY = '_hubspot_primary_contact_id' as const;
+
+/** Property internal names sent to HubSpot APIs (empty configured keys omitted). */
+export function getHubspotCompanyPropertiesForApiRequest(): string[] {
+  return (Object.values(HUBSPOT_COMPANY_PROPS) as string[]).filter(v => typeof v === 'string' && v.trim().length > 0);
+}
 
 export const HUBSPOT_CONTACT_PROPS = {
   email: 'email',
@@ -43,6 +65,19 @@ export const HUBSPOT_CONTACT_PROPS = {
   communicationRole: 'communications_role',
   createDate: 'createdate',
   ownerId: 'hubspot_owner_id',
+  /**
+   * HubSpot system property kept in sync with the contact's primary company association.
+   * Source of truth for `HSContact.companyId` (the v3 associations array order is not stable).
+   */
+  associatedCompanyId: 'associatedcompanyid',
+} as const;
+
+/**
+ * Substring matched on `contacts.communication_roles` (case-insensitive) in portfolio-only contact pick order, after company primary contact ID.
+ * If HubSpot uses a different label, update this value only (not user input).
+ */
+export const PORTFOLIO_CONTACT_ROLE_MATCH = {
+  spokiConnectionContact: 'Spoki Connection contact',
 } as const;
 
 export const HUBSPOT_TICKET_PROPS = {

@@ -14,6 +14,9 @@ import { OnboardingStageBadge } from '@/components/ui/OnboardingStageBadge';
 import { ONBOARDING_STAGES, type OnboardingStageType } from '@/lib/config/pipelines';
 import type { ClientWithHealth } from '@/types';
 import { formatMrrDisplay } from '@/lib/format/mrr';
+import { ContactPersonCell } from '@/components/clients/ContactPersonCell';
+import { AccountQualityDot } from '@/components/clients/AccountQualityDot';
+import { PlanUsageCell } from '@/components/clients/PlanUsageCell';
 
 const TICKET_STAGES: Record<string, string> = {
   '1': 'Deal won', '1011192836': 'Activation Call Booked', '2702656701': 'Activation problems',
@@ -168,6 +171,7 @@ export default function OnboardingClientsPage() {
     try {
       const params: Parameters<typeof clientsApi.list>[1] = {
         page, q, sort: sortBy, dir: sortDir,
+        contactContext: 'portfolio',
         ...(isAdmin || !hasOwnerProfile ? { viewAll: true } : {}),
         ...(selectedOwner ? { owner: selectedOwner } : {}),
       };
@@ -262,6 +266,12 @@ export default function OnboardingClientsPage() {
               <tr className="border-b border-slate-200">
                 {([
                   { label: 'Azienda', key: 'name' },
+                  {
+                    label: 'Phone Status',
+                    key: '',
+                    thClass: 'w-14 max-w-[4.5rem] shrink-0 px-2 py-3 text-center',
+                  },
+                  { label: 'Contact person', key: '', thClass: 'px-4 py-3 min-w-[11rem] max-w-[14rem]' },
                   { label: 'Fonte', key: 'source' },
                   { label: 'Onboarding', key: 'onboarding' },
                   { label: 'Giorni in pipeline', key: 'pipeline' },
@@ -274,7 +284,7 @@ export default function OnboardingClientsPage() {
                 ] as const).map(col => (
                   <th
                     key={col.label}
-                    className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide ${col.key ? 'cursor-pointer select-none hover:bg-slate-50 transition-colors' : ''} ${sortBy === col.key ? 'text-emerald-600' : 'text-slate-500'}`}
+                    className={`${'thClass' in col && col.thClass ? col.thClass : 'px-4 py-3'} text-xs font-semibold uppercase tracking-wide ${'thClass' in col && col.thClass?.includes('text-center') ? 'text-center' : 'text-left'} ${col.key ? 'cursor-pointer select-none hover:bg-slate-50 transition-colors' : ''} ${sortBy === col.key ? 'text-emerald-600' : 'text-slate-500'}`}
                     onClick={col.key ? () => {
                       if (sortBy === col.key) {
                         setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -303,6 +313,8 @@ export default function OnboardingClientsPage() {
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-100 animate-pulse">
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-40 mb-1" /><div className="h-3 bg-slate-100 rounded w-24" /></td>
+                    <td className="px-2 py-3 w-14 text-center"><div className="h-2.5 w-2.5 bg-slate-100 rounded-full mx-auto" /></td>
+                    <td className="px-4 py-3 min-w-0 max-w-[14rem]"><div className="h-4 bg-slate-100 rounded w-28 mb-1" /><div className="h-3 bg-slate-100 rounded w-36" /></td>
                     <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-16" /></td>
                     <td className="px-4 py-3"><div className="h-3 bg-slate-100 rounded w-28" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-12" /></td>
@@ -316,7 +328,7 @@ export default function OnboardingClientsPage() {
                   </tr>
                 ))
               ) : clients.length === 0 ? (
-                <tr><td colSpan={11} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={13} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -332,6 +344,17 @@ export default function OnboardingClientsPage() {
                         </a>
                         {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
                       </div>
+                    </td>
+                    <td className="px-2 py-3 w-14 max-w-[4.5rem] text-center align-middle">
+                      <AccountQualityDot
+                        variant="binary"
+                        accountQualityScore={c.accountQualityScore}
+                        churnRisk={c.churnRisk}
+                        onboardingStageType={c.onboardingStageType}
+                      />
+                    </td>
+                    <td className="px-4 py-3 align-top min-w-0 max-w-[14rem]">
+                      <ContactPersonCell contact={c.contactPerson} />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {c.purchaseSource ? (
@@ -370,7 +393,7 @@ export default function OnboardingClientsPage() {
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-700">{formatMrrDisplay(c.mrr)}</td>
                     <td className="px-4 py-3">
-                      {c.plan ? <Badge variant="outline" size="sm">{c.plan}</Badge> : <span className="text-slate-400">--</span>}
+                      <PlanUsageCell plan={c.plan} planUsage={c.planUsage} />
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {getOwnerName(c.csOwnerId)}
