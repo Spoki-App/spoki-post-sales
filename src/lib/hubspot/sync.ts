@@ -273,6 +273,117 @@ async function syncContacts(contacts: HSContact[]): Promise<number> {
   return count;
 }
 
+// ─── Client ↔ Contact associations (many-to-many) ────────────────────────────
+
+/**
+ * Reconcile `client_contacts` for the given HubSpot company IDs. Pulls every
+ * company↔contact association edge from HubSpot, upserts it, and deletes rows
+ * that no longer exist in HubSpot for those companies.
+ */
+async function syncClientContactAssociations(companyHubspotIds: string[]): Promise<{ upserted: number; deleted: number }> {
+  if (companyHubspotIds.length === 0) return { upserted: 0, deleted: 0 };
+
+  const hubspot = getHubSpotClient();
+  const edges = await hubspot.getCompanyContactAssociations(companyHubspotIds);
+  if (edges.length === 0) return { upserted: 0, deleted: 0 };
+
+  const uniqueCompanyHsIds = [...new Set(edges.map(e => e.companyHubspotId))];
+  const uniqueContactHsIds = [...new Set(edges.map(e => e.contactHubspotId))];
+
+  const [clientsRes, contactsRes] = await Promise.all([
+    pgQuery<{ hubspot_id: string; id: string }>(
+      `SELECT hubspot_id, id FROM clients WHERE hubspot_id = ANY($1::text[])`,
+      [uniqueCompanyHsIds]
+    ),
+    pgQuery<{ hubspot_id: string; id: string }>(
+      `SELECT hubspot_id, id FROM contacts WHERE hubspot_id = ANY($1::text[])`,
+      [uniqueContactHsIds]
+    ),
+  ]);
+  const clientMap: Record<string, string> = {};
+  const contactMap: Record<string, string> = {};
+  for (const r of clientsRes.rows) clientMap[r.hubspot_id] = r.id;
+  for (const r of contactsRes.rows) contactMap[r.hubspot_id] = r.id;
+
+  // Pick a single label per edge: prefer first non-empty user-defined label.
+  // Drop edges where either side is missing locally.
+  const resolved = edges
+    .map(e => {
+      const clientId = clientMap[e.companyHubspotId];
+      const contactId = contactMap[e.contactHubspotId];
+      if (!clientId || !contactId) return null;
+      const label = e.labels.find(l => l.length > 0) ?? null;
+      return {
+        clientId,
+        contactId,
+        isPrimary: e.isPrimary,
+        label,
+        primarySource: e.isPrimary ? 'hubspot_typeid_2' : null,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  if (resolved.length === 0) return { upserted: 0, deleted: 0 };
+
+  // Deduplicate (clientId, contactId) keeping the row that is primary or has a label.
+  const dedup = new Map<string, typeof resolved[number]>();
+  for (const r of resolved) {
+    const key = `${r.clientId}|${r.contactId}`;
+    const prev = dedup.get(key);
+    if (!prev) { dedup.set(key, r); continue; }
+    const merged = {
+      ...prev,
+      isPrimary: prev.isPrimary || r.isPrimary,
+      label: prev.label ?? r.label,
+      primarySource: prev.primarySource ?? r.primarySource,
+    };
+    dedup.set(key, merged);
+  }
+  const rows = [...dedup.values()];
+
+  const CHUNK = 500;
+  let upserted = 0;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    await pgQuery(
+      `INSERT INTO client_contacts (client_id, contact_id, is_primary, label, primary_source, updated_at)
+       SELECT * FROM UNNEST(
+         $1::uuid[], $2::uuid[], $3::boolean[], $4::text[], $5::text[], $6::timestamptz[]
+       ) AS t(client_id, contact_id, is_primary, label, primary_source, updated_at)
+       ON CONFLICT (client_id, contact_id) DO UPDATE SET
+         is_primary     = EXCLUDED.is_primary,
+         label          = EXCLUDED.label,
+         primary_source = EXCLUDED.primary_source,
+         updated_at     = NOW()`,
+      [
+        chunk.map(r => r.clientId),
+        chunk.map(r => r.contactId),
+        chunk.map(r => r.isPrimary),
+        chunk.map(r => r.label),
+        chunk.map(r => r.primarySource),
+        chunk.map(() => new Date()),
+      ]
+    );
+    upserted += chunk.length;
+  }
+
+  // Delete edges that no longer exist in HubSpot for the synced clients.
+  const syncedClientIds = [...new Set(rows.map(r => r.clientId))];
+  const keepKeys = rows.map(r => `${r.clientId}|${r.contactId}`);
+  if (syncedClientIds.length > 0) {
+    const delRes = await pgQuery(
+      `DELETE FROM client_contacts
+        WHERE client_id = ANY($1::uuid[])
+          AND (client_id::text || '|' || contact_id::text) <> ALL($2::text[])`,
+      [syncedClientIds, keepKeys]
+    );
+    return { upserted, deleted: delRes.rowCount ?? 0 };
+  }
+  return { upserted, deleted: 0 };
+}
+
+export const syncClientContactAssociationsForCompanies = syncClientContactAssociations;
+
 // ─── Tickets ──────────────────────────────────────────────────────────────────
 
 async function syncTickets(tickets: HSTicket[]): Promise<number> {
@@ -572,6 +683,15 @@ export async function runFullSync(): Promise<SyncResult> {
     if (contacts.status === 'fulfilled') {
       result.contacts = await syncContacts(contacts.value);
       logger.info(`Synced ${result.contacts} contacts`);
+      if (companies.status === 'fulfilled') {
+        try {
+          const assoc = await syncClientContactAssociations(companies.value.map(c => c.id));
+          logger.info(`Synced client_contacts: upserted=${assoc.upserted}, deleted=${assoc.deleted}`);
+        } catch (err) {
+          errors.push(`client_contacts: ${String(err)}`);
+          logger.error('Failed to sync client_contacts', { error: String(err) });
+        }
+      }
     } else {
       errors.push(`contacts: ${String(contacts.reason)}`);
     }

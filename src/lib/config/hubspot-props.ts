@@ -65,6 +65,11 @@ export const HUBSPOT_CONTACT_PROPS = {
   communicationRole: 'communications_role',
   createDate: 'createdate',
   ownerId: 'hubspot_owner_id',
+  /**
+   * HubSpot system property kept in sync with the contact's primary company association.
+   * Source of truth for `HSContact.companyId` (the v3 associations array order is not stable).
+   */
+  associatedCompanyId: 'associatedcompanyid',
 } as const;
 
 /**

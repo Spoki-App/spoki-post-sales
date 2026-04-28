@@ -2,11 +2,7 @@ import { NextRequest } from 'next/server';
 import { withAuth, createSuccessResponse, createErrorResponse, type AuthenticatedRequest } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
 import { getOwnerByEmail } from '@/lib/config/owners';
-import {
-  sqlContactPersonPickOrder,
-  sqlContactPersonPickOrderPortfolio,
-  sqlContactPersonPickWhereLinkedOrPrimary,
-} from '@/lib/db/contact-person-pick-order';
+import { sqlContactPersonLateralFromClientContacts } from '@/lib/db/contact-person-pick-order';
 import { planUsageFromRawProperties } from '@/lib/clients/plan-usage-from-raw';
 import { readAccountQualityScoreFromRaw } from '@/lib/clients/account-quality-traffic';
 import { getStageLabel, getStageConfig, getPipelineLabel, getTotalStages } from '@/lib/config/deal-pipelines';
@@ -45,10 +41,9 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
     const q = searchParams.get('q') ?? '';
     const viewAll = searchParams.get('viewAll') === 'true';
     const contactContext = searchParams.get('contactContext') ?? '';
-    const contactPickOrderSql =
-      contactContext === 'portfolio'
-        ? sqlContactPersonPickOrderPortfolio('paged.raw_properties')
-        : sqlContactPersonPickOrder('paged.raw_properties');
+    const contactPersonLateralSql = sqlContactPersonLateralFromClientContacts('paged.id', {
+      portfolio: contactContext === 'portfolio',
+    });
 
     const sortKey = searchParams.get('sort') ?? 'name';
     const sortDir = searchParams.get('dir') === 'desc' ? 'DESC' : 'ASC';
@@ -188,13 +183,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
           ))
         ORDER BY e.occurred_at DESC LIMIT 1
       ) le ON true
-      LEFT JOIN LATERAL (
-        SELECT first_name, last_name, email, hubspot_id
-        FROM contacts
-        WHERE ${sqlContactPersonPickWhereLinkedOrPrimary('paged.id', 'paged.raw_properties')}
-        ${contactPickOrderSql}
-        LIMIT 1
-      ) cp ON true
+      ${contactPersonLateralSql}
       LEFT JOIN LATERAL (
         SELECT pipeline_id, stage_id, deal_name, amount, close_date, stage_entered_at
         FROM deals WHERE client_id = paged.id AND pipeline_id = '671838099'

@@ -60,14 +60,16 @@ async function handleSync(type: string | null): Promise<NextResponse> {
     }
 
     if (type === 'contacts') {
-      const { syncContactsOnly } = await import('@/lib/hubspot/sync');
+      const { syncContactsOnly, syncClientContactAssociationsForCompanies } = await import('@/lib/hubspot/sync');
       // Fetch only contacts associated with companies already in the DB
       const companyIdsRes = await pgQuery<{ hubspot_id: string }>('SELECT hubspot_id FROM clients');
       const companyHubspotIds = companyIdsRes.rows.map(r => r.hubspot_id);
       logger.info(`Fetching contacts for ${companyHubspotIds.length} synced companies`);
       const contacts = await client.getContactsForCompanies(companyHubspotIds);
       const count = await syncContactsOnly(contacts);
-      return NextResponse.json({ success: true, type: 'contacts', count });
+      const associations = await syncClientContactAssociationsForCompanies(companyHubspotIds);
+      logger.info(`Synced client_contacts: upserted=${associations.upserted}, deleted=${associations.deleted}`);
+      return NextResponse.json({ success: true, type: 'contacts', count, associations });
     }
 
     if (type === 'tickets') {

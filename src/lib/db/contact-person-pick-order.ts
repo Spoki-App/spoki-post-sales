@@ -80,6 +80,57 @@ export function sqlContactPersonPickOrder(rawPropertiesRef: string): string {
 }
 
 /**
+ * Portfolio LATERAL join driven by `client_contacts` (many-to-many).
+ *
+ * Picks one row per client by:
+ *   1. `cc.is_primary` (HubSpot primary association — typeId 2)
+ *   2. portfolio mode only: `cc.label` or `c.communication_roles` matching Spoki Connection
+ *   3. `c.communication_roles` matching primary / point of contact
+ *   4. last activity, then last/first name
+ *
+ * @param clientIdRef SQL expression for the outer client id (e.g. `paged.id`)
+ * @param options.portfolio when true, prioritises Spoki Connection above generic primary
+ */
+export function sqlContactPersonLateralFromClientContacts(
+  clientIdRef: string,
+  options: { portfolio: boolean }
+): string {
+  const spokiLikeLiteral = options.portfolio
+    ? sqlLikePatternLiteralFromRoleLabel(PORTFOLIO_CONTACT_ROLE_MATCH.spokiConnectionContact)
+    : null;
+  const useSpoki = Boolean(spokiLikeLiteral);
+  const genericTier = useSpoki ? 2 : 1;
+  const elseTier = useSpoki ? 3 : 2;
+
+  const spokiWhen = useSpoki
+    ? `WHEN (cc.label IS NOT NULL AND lower(cc.label) LIKE ${spokiLikeLiteral})
+            OR (c.communication_roles IS NOT NULL AND lower(c.communication_roles) LIKE ${spokiLikeLiteral}) THEN 1
+        `
+    : '';
+
+  return `LEFT JOIN LATERAL (
+    SELECT c.first_name, c.last_name, c.email, c.hubspot_id
+    FROM client_contacts cc
+    JOIN contacts c ON c.id = cc.contact_id
+    WHERE cc.client_id = ${clientIdRef}
+    ORDER BY
+      CASE WHEN cc.is_primary THEN 0 ELSE 1 END,
+      CASE
+        ${spokiWhen}WHEN c.communication_roles IS NOT NULL AND (
+          (';' || lower(c.communication_roles) || ';') LIKE '%;primary;%'
+          OR (';' || lower(c.communication_roles) || ';') LIKE '%;primary contact;%'
+          OR lower(c.communication_roles) LIKE '%point of contact%'
+        ) THEN ${genericTier}
+        ELSE ${elseTier}
+      END,
+      c.last_activity_at DESC NULLS LAST,
+      c.last_name ASC NULLS LAST,
+      c.first_name ASC NULLS LAST
+    LIMIT 1
+  ) cp ON true`;
+}
+
+/**
  * Portfolio list: primary company contact ID, then Spoki Connection contact role, then same tiers as {@link sqlContactPersonPickOrder}.
  */
 export function sqlContactPersonPickOrderPortfolio(rawPropertiesRef: string): string {
