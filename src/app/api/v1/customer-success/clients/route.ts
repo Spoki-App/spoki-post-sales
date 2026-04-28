@@ -6,6 +6,8 @@ import {
   type AuthenticatedRequest,
 } from '@/lib/api/middleware';
 import { pgQuery } from '@/lib/db/postgres';
+import { sqlContactPersonLateralFromClientContacts } from '@/lib/db/contact-person-pick-order';
+import { planUsageFromRawProperties } from '@/lib/clients/plan-usage-from-raw';
 import { requireCsOwner } from '@/lib/customer-success/require-cs-owner';
 
 export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequest) => {
@@ -42,9 +44,19 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       plan: string | null;
       mrr: string | null;
       renewal_date: string | null;
+      contact_first_name: string | null;
+      contact_last_name: string | null;
+      contact_email: string | null;
+      contact_hubspot_id: string | null;
+      raw_properties: unknown;
     }>(
-      `SELECT c.id, c.hubspot_id, c.name, c.domain, c.plan, c.mrr, c.renewal_date
+      `SELECT c.id, c.hubspot_id, c.name, c.domain, c.plan, c.mrr, c.renewal_date, c.raw_properties,
+              cp.first_name AS contact_first_name,
+              cp.last_name AS contact_last_name,
+              cp.email AS contact_email,
+              cp.hubspot_id AS contact_hubspot_id
        FROM clients c
+       ${sqlContactPersonLateralFromClientContacts('c.id', { portfolio: false })}
        ${where}
        ORDER BY c.name ASC
        LIMIT ${pageSize} OFFSET ${offset}`,
@@ -59,6 +71,15 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       plan: r.plan,
       mrr: r.mrr ? parseFloat(r.mrr) : null,
       renewalDate: r.renewal_date,
+      contactPerson: r.contact_hubspot_id
+        ? {
+            firstName: r.contact_first_name,
+            lastName: r.contact_last_name,
+            email: r.contact_email,
+            hubspotId: r.contact_hubspot_id,
+          }
+        : null,
+      planUsage: planUsageFromRawProperties(r.raw_properties),
     }));
 
     return createSuccessResponse({ data, total, page, pageSize });

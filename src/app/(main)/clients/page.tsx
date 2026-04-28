@@ -6,11 +6,14 @@ import { useAuthStore } from '@/lib/store/auth';
 import { clientsApi } from '@/lib/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Search, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { getOwnerName, getOwnerByEmail, isAdminEmail } from '@/lib/config/owners';
 import type { ClientWithHealth, DealSummary } from '@/types';
+import { ContactPersonCell } from '@/components/clients/ContactPersonCell';
+import { AccountQualityDot } from '@/components/clients/AccountQualityDot';
+import { PlanUsageCell } from '@/components/clients/PlanUsageCell';
 import { formatMrrDisplay } from '@/lib/format/mrr';
 
 function DealCell({ deal }: { deal: DealSummary | null }) {
@@ -276,12 +279,14 @@ export default function ClientsPage() {
   const [filterHasTickets, setFilterHasTickets] = useState('');
   const [filterPipelineDays, setFilterPipelineDays] = useState('');
   const [ownerOptions, setOwnerOptions] = useState<Array<{ id: string; firstName: string; lastName: string; team: string }>>([]);
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
     clientsApi.listOwners(token)
-      .then(res => { if (!cancelled) setOwnerOptions(res.data); })
+      .then(res => { if (!cancelled) setOwnerOptions(res.data ?? []); })
       .catch(err => console.error('Failed to load owner options', err));
     return () => { cancelled = true; };
   }, [token]);
@@ -306,8 +311,8 @@ export default function ClientsPage() {
     try {
       const params: Parameters<typeof clientsApi.list>[1] = {
         page, q,
-        sort: filterPipelineDays ? 'pipeline' : 'name',
-        dir: filterPipelineDays ? 'desc' : 'asc',
+        sort: sortBy,
+        dir: sortDir,
         ...(isAdmin || !hasOwnerProfile || filterOwner ? { viewAll: true } : {}),
         ...(filterOwner ? { owner: filterOwner } : {}),
         ...(filterSource ? { source: filterSource } : {}),
@@ -330,7 +335,7 @@ export default function ClientsPage() {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [token, page, q, isAdmin, hasOwnerProfile, filterOwner, filterSource, filterPlan, filterOnboardingStage, filterHasTickets, filterPipelineDays]);
+  }, [token, page, q, isAdmin, hasOwnerProfile, filterOwner, filterSource, filterPlan, filterOnboardingStage, filterHasTickets, filterPipelineDays, sortBy, sortDir]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -400,65 +405,144 @@ export default function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Azienda</th>
-                <th className="px-4 py-3 text-left">
-                  <ColumnFilterDropdown
-                    label="Fonte"
-                    options={SOURCE_OPTIONS}
-                    value={filterSource}
-                    onChange={v => { setFilterSource(v); setPage(1); }}
-                  />
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Deal Sales</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Deal Upselling</th>
-                <th className="px-4 py-3 text-left">
-                  <ColumnFilterDropdown
-                    label="Onboarding"
-                    options={ONBOARDING_FILTER_OPTIONS}
-                    value={filterOnboardingStage}
-                    onChange={v => { setFilterOnboardingStage(v); setPage(1); }}
-                  />
-                </th>
-                <th className="px-4 py-3 text-left">
-                  <ColumnFilterDropdown
-                    label="Giorni in pipeline"
-                    options={[
-                      { value: '0-30', label: '0–30 giorni' },
-                      { value: '31-60', label: '31–60 giorni' },
-                      { value: '61-90', label: '61–90 giorni' },
-                      { value: '91+', label: '91+ giorni' },
-                    ]}
-                    value={filterPipelineDays}
-                    onChange={v => { setFilterPipelineDays(v); setPage(1); }}
-                  />
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">MRR</th>
-                <th className="px-4 py-3 text-left">
-                  <ColumnFilterDropdown
-                    label="Piano"
-                    options={planOptions}
-                    value={filterPlan}
-                    onChange={v => { setFilterPlan(v); setPage(1); }}
-                  />
-                </th>
-                <th className="px-4 py-3 text-left">
-                  <ColumnFilterDropdown
-                    label="Company Owner"
-                    options={ownerOptions.map(o => ({ value: o.id, label: `${o.firstName} ${o.lastName}` }))}
-                    value={filterOwner}
-                    onChange={v => { setFilterOwner(v); setPage(1); }}
-                  />
-                </th>
-                <th className="px-4 py-3 text-left">
-                  <ColumnFilterDropdown
-                    label="Ticket Support"
-                    options={HAS_TICKETS_OPTIONS}
-                    value={filterHasTickets}
-                    onChange={v => { setFilterHasTickets(v); setPage(1); }}
-                  />
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Ultimo contatto</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Rinnovo</th>
+                {(() => {
+                  type ColumnDef = {
+                    label: string;
+                    sortKey?: string;
+                    filter?: React.ReactNode;
+                  };
+                  const columns: ColumnDef[] = [
+                    { label: 'Azienda', sortKey: 'name' },
+                    { label: 'Contact person' },
+                    {
+                      label: 'Fonte',
+                      sortKey: 'source',
+                      filter: (
+                        <ColumnFilterDropdown
+                          label="Fonte"
+                          options={SOURCE_OPTIONS}
+                          value={filterSource}
+                          onChange={v => { setFilterSource(v); setPage(1); }}
+                        />
+                      ),
+                    },
+                    { label: 'Deal Sales' },
+                    { label: 'Deal Upselling' },
+                    {
+                      label: 'Onboarding',
+                      sortKey: 'onboarding',
+                      filter: (
+                        <ColumnFilterDropdown
+                          label="Onboarding"
+                          options={ONBOARDING_FILTER_OPTIONS}
+                          value={filterOnboardingStage}
+                          onChange={v => { setFilterOnboardingStage(v); setPage(1); }}
+                        />
+                      ),
+                    },
+                    {
+                      label: 'Giorni in pipeline',
+                      sortKey: 'pipeline',
+                      filter: (
+                        <ColumnFilterDropdown
+                          label="Giorni in pipeline"
+                          options={[
+                            { value: '0-30', label: '0–30 giorni' },
+                            { value: '31-60', label: '31–60 giorni' },
+                            { value: '61-90', label: '61–90 giorni' },
+                            { value: '91+', label: '91+ giorni' },
+                          ]}
+                          value={filterPipelineDays}
+                          onChange={v => { setFilterPipelineDays(v); setPage(1); }}
+                        />
+                      ),
+                    },
+                    { label: 'MRR', sortKey: 'mrr' },
+                    {
+                      label: 'Piano',
+                      sortKey: 'plan',
+                      filter: (
+                        <ColumnFilterDropdown
+                          label="Piano"
+                          options={planOptions}
+                          value={filterPlan}
+                          onChange={v => { setFilterPlan(v); setPage(1); }}
+                        />
+                      ),
+                    },
+                    {
+                      label: 'Company Owner',
+                      sortKey: 'owner',
+                      filter: (
+                        <ColumnFilterDropdown
+                          label="Company Owner"
+                          options={ownerOptions.map(o => ({ value: o.id, label: `${o.firstName} ${o.lastName}` }))}
+                          value={filterOwner}
+                          onChange={v => { setFilterOwner(v); setPage(1); }}
+                        />
+                      ),
+                    },
+                    {
+                      label: 'Ticket Support',
+                      sortKey: 'support',
+                      filter: (
+                        <ColumnFilterDropdown
+                          label="Ticket Support"
+                          options={HAS_TICKETS_OPTIONS}
+                          value={filterHasTickets}
+                          onChange={v => { setFilterHasTickets(v); setPage(1); }}
+                        />
+                      ),
+                    },
+                    { label: 'Ultimo contatto', sortKey: 'lastContact' },
+                    { label: 'Rinnovo', sortKey: 'renewal' },
+                  ];
+
+                  const DESC_FIRST = new Set(['mrr', 'renewal', 'pipeline', 'onboarding', 'lastContact', 'support']);
+
+                  return columns.map(col => {
+                    const isActiveSort = !!col.sortKey && sortBy === col.sortKey;
+                    const sortIcon = col.sortKey ? (
+                      isActiveSort
+                        ? sortDir === 'asc'
+                          ? <ChevronUp className="w-3.5 h-3.5" />
+                          : <ChevronDown className="w-3.5 h-3.5" />
+                        : <ChevronsUpDown className="w-3.5 h-3.5 opacity-30" />
+                    ) : null;
+                    const onSort = col.sortKey ? () => {
+                      if (sortBy === col.sortKey) {
+                        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortBy(col.sortKey!);
+                        setSortDir(DESC_FIRST.has(col.sortKey!) ? 'desc' : 'asc');
+                      }
+                      setPage(1);
+                    } : undefined;
+
+                    return (
+                      <th
+                        key={col.label}
+                        className={`px-4 py-3 text-left ${isActiveSort ? 'text-emerald-600' : 'text-slate-500'}`}
+                      >
+                        <div className="inline-flex items-center gap-1.5">
+                          {col.filter ?? (
+                            <span className="text-xs font-semibold uppercase tracking-wide whitespace-nowrap">{col.label}</span>
+                          )}
+                          {col.sortKey && (
+                            <button
+                              type="button"
+                              onClick={onSort}
+                              className="p-0.5 hover:bg-slate-100 rounded transition-colors"
+                              aria-label={`Ordina per ${col.label}`}
+                            >
+                              {sortIcon}
+                            </button>
+                          )}
+                        </div>
+                      </th>
+                    );
+                  });
+                })()}
                 <th className="w-10" />
               </tr>
             </thead>
@@ -467,6 +551,7 @@ export default function ClientsPage() {
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-100 animate-pulse">
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-40 mb-1" /><div className="h-3 bg-slate-100 rounded w-24" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-28 mb-1" /><div className="h-3 bg-slate-100 rounded w-36" /></td>
                     <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-16" /></td>
                     <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-20" /></td>
                     <td className="px-4 py-3"><div className="h-5 bg-slate-100 rounded w-20" /></td>
@@ -482,7 +567,7 @@ export default function ClientsPage() {
                   </tr>
                 ))
               ) : clients.length === 0 ? (
-                <tr><td colSpan={13} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={14} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -497,6 +582,18 @@ export default function ClientsPage() {
                           {c.name}
                         </a>
                         {c.domain && <p className="text-xs text-slate-400">{c.domain}</p>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex items-start gap-2">
+                        <AccountQualityDot
+                          accountQualityScore={c.accountQualityScore}
+                          churnRisk={c.churnRisk}
+                          onboardingStageType={c.onboardingStageType}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <ContactPersonCell contact={c.contactPerson} />
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -538,7 +635,7 @@ export default function ClientsPage() {
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-700">{formatMrrDisplay(c.mrr)}</td>
                     <td className="px-4 py-3">
-                      {c.plan ? <Badge variant="outline" size="sm">{c.plan}</Badge> : <span className="text-slate-400">—</span>}
+                      <PlanUsageCell plan={c.plan} planUsage={c.planUsage} />
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {getOwnerName(c.csOwnerId)}

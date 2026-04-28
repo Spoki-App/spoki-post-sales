@@ -13,6 +13,7 @@ import {
   HUBSPOT_TICKET_PROPS,
   HUBSPOT_DEAL_PROPS,
   HUBSPOT_DEAL_SYNC,
+  getHubspotCompanyPropertiesForApiRequest,
 } from '@/lib/config/hubspot-props';
 
 const logger = getLogger('hubspot:client');
@@ -155,6 +156,18 @@ export interface HSDeal {
   stageEnteredAt: string | null;
 }
 
+/** HubSpot picklist / multi-checkbox values may use `;` or `,` between labels. */
+function parseHubspotMultiSelectLabels(value: string | null | undefined): string[] {
+  if (value == null || value === '') return [];
+  return String(value)
+    .split(/[;,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/** HubSpot-defined: company → primary contact (associations v4). */
+const HUBSPOT_ASSOCIATION_COMPANY_TO_PRIMARY_CONTACT_TYPE_ID = 2;
+
 class HubSpotClient {
   private http: AxiosInstance;
 
@@ -260,7 +273,7 @@ class HubSpotClient {
 
   async getCompanies(): Promise<HSCompany[]> {
     logger.info('Fetching companies from HubSpot (filtered by post-sales owners)');
-    const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
+    const props = getHubspotCompanyPropertiesForApiRequest();
 
     // Post-sales portfolio = companies owned by Customer Success, Customer Support, or Partner Success.
     // The HubSpot Search API caps results at 10k per query; restricting to these teams keeps the
@@ -286,7 +299,7 @@ class HubSpotClient {
         method: 'POST',
         data: {
           filterGroups,
-          properties: props.split(','),
+          properties: props,
           limit: 100,
           ...(after ? { after } : {}),
         }
@@ -339,11 +352,11 @@ class HubSpotClient {
 
   async getCompaniesLegacy(): Promise<HSCompany[]> {
     logger.info('Fetching all companies from HubSpot (no filter)');
-    const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
+    const props = getHubspotCompanyPropertiesForApiRequest();
 
     return this.fetchAllPages(
       '/crm/v3/objects/companies',
-      { limit: 100, properties: props },
+      { limit: 100, properties: props.join(',') },
       ({ id, properties: p }) => ({
         id,
         name: p[HUBSPOT_COMPANY_PROPS.name] ?? null,
@@ -387,7 +400,7 @@ class HubSpotClient {
       'companies',
       ({ id, properties: p }, companyIds) => ({
         id,
-        companyId: companyIds[0] ?? null,
+        companyId: p[HUBSPOT_CONTACT_PROPS.associatedCompanyId] ?? companyIds[0] ?? null,
         email: p[HUBSPOT_CONTACT_PROPS.email] ?? null,
         firstName: p[HUBSPOT_CONTACT_PROPS.firstName] ?? null,
         lastName: p[HUBSPOT_CONTACT_PROPS.lastName] ?? null,
@@ -396,13 +409,103 @@ class HubSpotClient {
         lifecycleStage: p[HUBSPOT_CONTACT_PROPS.lifecycleStage] ?? null,
         ownerId: p[HUBSPOT_CONTACT_PROPS.ownerId] ?? null,
         lastActivityDate: p[HUBSPOT_CONTACT_PROPS.lastActivityDate] ?? null,
-        communicationRoles: p[HUBSPOT_CONTACT_PROPS.communicationRole]
-          ? p[HUBSPOT_CONTACT_PROPS.communicationRole]!.split(';').map(r => r.trim()).filter(Boolean)
-          : [],
+        communicationRoles: parseHubspotMultiSelectLabels(p[HUBSPOT_CONTACT_PROPS.communicationRole]),
         createDate: p[HUBSPOT_CONTACT_PROPS.createDate] ?? null,
         rawProperties: p as Record<string, unknown>,
       })
     );
+  }
+
+  private async readCompaniesToContactsAssociationsBatch(
+    companyHubspotIds: string[]
+  ): Promise<{
+    contactToCompany: Record<string, string>;
+    companyToPrimaryContact: Record<string, string>;
+    edges: Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }>;
+  }> {
+    const contactToCompany: Record<string, string> = {};
+    const companyToPrimaryContact: Record<string, string> = {};
+    const edges: Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }> = [];
+    if (companyHubspotIds.length === 0) return { contactToCompany, companyToPrimaryContact, edges };
+
+    const res = await this.getWithRetry('/crm/v4/associations/companies/contacts/batch/read', {}, {
+      method: 'POST',
+      data: { inputs: companyHubspotIds.map(id => ({ id })) },
+    });
+    const data = res.data as {
+      results: Array<{
+        from: { id: string };
+        to: Array<{
+          toObjectId: string | number;
+          associationTypes?: Array<{ category: string; typeId: number; label: string | null }>;
+        }>;
+      }>;
+    };
+
+    for (const item of data.results ?? []) {
+      const companyId = String(item.from.id);
+      for (const assoc of item.to ?? []) {
+        const contactId = String(assoc.toObjectId);
+        if (!contactToCompany[contactId]) {
+          contactToCompany[contactId] = companyId;
+        }
+        const types = assoc.associationTypes ?? [];
+        const isPrimary = types.some(
+          t =>
+            t.category === 'HUBSPOT_DEFINED' &&
+            (t.typeId === HUBSPOT_ASSOCIATION_COMPANY_TO_PRIMARY_CONTACT_TYPE_ID || t.label === 'Primary')
+        );
+        if (isPrimary && !companyToPrimaryContact[companyId]) {
+          companyToPrimaryContact[companyId] = contactId;
+        }
+        const labels = types
+          .map(t => (t.label ?? '').trim())
+          .filter(l => l.length > 0);
+        edges.push({ companyHubspotId: companyId, contactHubspotId: contactId, isPrimary, labels });
+      }
+    }
+    return { contactToCompany, companyToPrimaryContact, edges };
+  }
+
+  /**
+   * All company↔contact association edges for the given companies.
+   * Used by sync to populate `client_contacts` (many-to-many).
+   */
+  async getCompanyContactAssociations(
+    companyHubspotIds: string[]
+  ): Promise<Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }>> {
+    const out: Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }> = [];
+    if (companyHubspotIds.length === 0) return out;
+    const BATCH = 100;
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const { edges } = await this.readCompaniesToContactsAssociationsBatch(slice);
+        out.push(...edges);
+      } catch (err) {
+        logger.warn(`Company↔contact associations failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Native CRM primary contact per company (association typeId 2), for sync into `clients.raw_properties`.
+   */
+  async getCompanyPrimaryContactHubspotIds(companyHubspotIds: string[]): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    if (companyHubspotIds.length === 0) return out;
+    const BATCH = 100;
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const { companyToPrimaryContact } = await this.readCompaniesToContactsAssociationsBatch(slice);
+        Object.assign(out, companyToPrimaryContact);
+      } catch (err) {
+        logger.warn(`Primary contact associations failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+    return out;
   }
 
   /**
@@ -422,17 +525,10 @@ class HubSpotClient {
     for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
       const slice = companyHubspotIds.slice(i, i + BATCH);
       try {
-        const res = await this.getWithRetry('/crm/v4/associations/companies/contacts/batch/read', {}, {
-          method: 'POST',
-          data: { inputs: slice.map(id => ({ id })) },
-        });
-        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string }> }> };
-        for (const item of data.results ?? []) {
-          for (const assoc of item.to ?? []) {
-            // Keep first company found per contact
-            if (!contactToCompanyMap[assoc.toObjectId]) {
-              contactToCompanyMap[assoc.toObjectId] = item.from.id;
-            }
+        const { contactToCompany } = await this.readCompaniesToContactsAssociationsBatch(slice);
+        for (const [contactId, companyId] of Object.entries(contactToCompany)) {
+          if (!contactToCompanyMap[contactId]) {
+            contactToCompanyMap[contactId] = companyId;
           }
         }
       } catch (err) {
@@ -462,7 +558,7 @@ class HubSpotClient {
           const p = item.properties;
           results.push({
             id: item.id,
-            companyId: contactToCompanyMap[item.id] ?? null,
+            companyId: p[HUBSPOT_CONTACT_PROPS.associatedCompanyId] ?? contactToCompanyMap[item.id] ?? null,
             email: p[HUBSPOT_CONTACT_PROPS.email] ?? null,
             firstName: p[HUBSPOT_CONTACT_PROPS.firstName] ?? null,
             lastName: p[HUBSPOT_CONTACT_PROPS.lastName] ?? null,
@@ -471,9 +567,7 @@ class HubSpotClient {
             lifecycleStage: p[HUBSPOT_CONTACT_PROPS.lifecycleStage] ?? null,
             ownerId: p[HUBSPOT_CONTACT_PROPS.ownerId] ?? null,
             lastActivityDate: p[HUBSPOT_CONTACT_PROPS.lastActivityDate] ?? null,
-            communicationRoles: p[HUBSPOT_CONTACT_PROPS.communicationRole]
-              ? p[HUBSPOT_CONTACT_PROPS.communicationRole]!.split(';').map(r => r.trim()).filter(Boolean)
-              : [],
+            communicationRoles: parseHubspotMultiSelectLabels(p[HUBSPOT_CONTACT_PROPS.communicationRole]),
             createDate: p[HUBSPOT_CONTACT_PROPS.createDate] ?? null,
             rawProperties: p as Record<string, unknown>,
           });

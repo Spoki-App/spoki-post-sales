@@ -24,7 +24,14 @@ export interface Client {
 
 export type HealthStatus = 'green' | 'yellow' | 'red';
 
+export interface ClientPlanUsage {
+  used: number;
+  included: number;
+}
+
 export interface ClientWithHealth extends Client {
+  onboardingStage?: string | null;
+  onboardingStageType?: 'normal' | 'warning' | 'danger' | string | null;
   onboardingTicket: {
     hubspotId: string;
     pipeline: string | null;
@@ -51,6 +58,16 @@ export interface ClientWithHealth extends Client {
     callDisposition: string | null;
     callTitle: string | null;
   } | null;
+  /** Primary HubSpot contact for list views: most recently active, then name order. */
+  contactPerson: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    hubspotId: string;
+  } | null;
+  planUsage?: ClientPlanUsage | null;
+  /** Raw value from optional HubSpot company property (`accountQualityScore`); used for quality dot when set. */
+  accountQualityScore?: string | null;
   salesDeal: DealSummary | null;
   upsellingDeal: DealSummary | null;
 }
