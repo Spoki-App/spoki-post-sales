@@ -279,6 +279,7 @@ export default function ClientsPage() {
   const [filterHasTickets, setFilterHasTickets] = useState('');
   const [filterPipelineDays, setFilterPipelineDays] = useState('');
   const [ownerOptions, setOwnerOptions] = useState<Array<{ id: string; firstName: string; lastName: string; team: string }>>([]);
+  const [planValues, setPlanValues] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -288,16 +289,19 @@ export default function ClientsPage() {
     clientsApi.listOwners(token)
       .then(res => { if (!cancelled) setOwnerOptions(res.data ?? []); })
       .catch(err => console.error('Failed to load owner options', err));
+    clientsApi.listPlanOptions(token)
+      .then(res => { if (!cancelled) setPlanValues(res.data ?? []); })
+      .catch(err => console.error('Failed to load plan options', err));
     return () => { cancelled = true; };
   }, [token]);
 
-  const planOptions = useMemo(() => {
-    const plans = [...new Set(clients.map(c => c.plan).filter(Boolean))].sort() as string[];
-    return [
-      ...plans.map(p => ({ value: p, label: p })),
+  const planOptions = useMemo(
+    () => [
+      ...planValues.map(p => ({ value: p, label: p })),
       { value: '__none__', label: '(nessun piano)' },
-    ];
-  }, [clients]);
+    ],
+    [planValues],
+  );
 
   const load = useCallback(async () => {
     if (!token) return;

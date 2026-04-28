@@ -109,6 +109,8 @@ export const clientsApi = {
       `/clients/owners`,
       { token }
     ),
+  listPlanOptions: (token: string) =>
+    fetchApi<ApiResponse<string[]>>(`/clients/plan-options`, { token }),
 };
 
 // ─── Customer Success ──────────────────────────────────────────────────────────
