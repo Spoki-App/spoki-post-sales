@@ -39,5 +39,23 @@ export async function register() {
     setTimeout(runSync, 15_000);
     setInterval(runSync, INTERVAL_MS);
     console.log(`[sync-cron] Scheduled: first sync in 15s, then every ${INTERVAL_MS / 3_600_000}h`);
+
+    if (process.env.NAR_REFRESH_DEV_CRON === '1') {
+      const NAR_INTERVAL_MS = 6 * 60 * 60 * 1000;
+      async function runNarRefresh() {
+        try {
+          const res = await fetch(`${baseUrl}/api/v1/nar/dataset/refresh?secret=${secret}`, { method: 'POST' });
+          const data = await res.json() as { data?: { rowCount?: number; accountCount?: number } };
+          console.log(
+            `[nar-refresh] ${res.ok ? 'OK' : 'FAIL'} rows=${data.data?.rowCount ?? 0} accounts=${data.data?.accountCount ?? 0}`
+          );
+        } catch {
+          console.log('[nar-refresh] server not ready, skipping');
+        }
+      }
+      setTimeout(runNarRefresh, 30_000);
+      setInterval(runNarRefresh, NAR_INTERVAL_MS);
+      console.log(`[nar-refresh] Dev cron enabled: first run in 30s, then every ${NAR_INTERVAL_MS / 3_600_000}h`);
+    }
   }
 }

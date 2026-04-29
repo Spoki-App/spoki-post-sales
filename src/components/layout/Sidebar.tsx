@@ -22,6 +22,7 @@ import {
   Database,
   AlertTriangle,
   Shield,
+  Activity,
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -142,6 +143,38 @@ export function Sidebar() {
             {label}
           </Link>
         ))}
+
+        {(isCs || isAdmin) && (
+          <div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500">
+              <Activity className="w-4 h-4 shrink-0" />
+              <span>NAR Analysis</span>
+            </div>
+            <div className="ml-4 space-y-0.5">
+              {[
+                { href: '/nar/overview',  label: 'Overview' },
+                { href: '/nar/buckets',   label: 'Bucket' },
+                { href: '/nar/churn',     label: 'Churn' },
+                { href: '/nar/insights',  label: 'AI Suggest' },
+                { href: '/nar/upload',    label: 'Upload', editorOnly: true },
+              ].filter(it => !it.editorOnly || isCs || isAdmin).map(({ href, label }) => {
+                const active = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      active ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {canEditTouchpointTemplates && !isAdmin && (
           <Link

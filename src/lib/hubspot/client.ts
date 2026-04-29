@@ -1307,6 +1307,46 @@ class HubSpotClient {
     return results;
   }
 
+  /**
+   * List all company properties defined in HubSpot.
+   * Used by the NAR module to discover the internal names of partner_id / partner_type properties
+   * before adding them to {@link HUBSPOT_COMPANY_PROPS}.
+   */
+  async getCompanyProperties(): Promise<Array<{
+    name: string;
+    label: string;
+    type: string;
+    fieldType: string;
+    groupName: string | null;
+    description: string | null;
+    options: Array<{ label: string; value: string }>;
+  }>> {
+    logger.info('Fetching company properties from HubSpot');
+    const res = await this.getWithRetry('/crm/v3/properties/companies', {});
+    const data = res.data as {
+      results?: Array<{
+        name: string;
+        label?: string;
+        type?: string;
+        fieldType?: string;
+        groupName?: string;
+        description?: string;
+        options?: Array<{ label?: string; value?: string }>;
+      }>;
+    };
+    return (data.results ?? []).map(p => ({
+      name: p.name,
+      label: p.label ?? p.name,
+      type: p.type ?? '',
+      fieldType: p.fieldType ?? '',
+      groupName: p.groupName ?? null,
+      description: p.description ?? null,
+      options: (p.options ?? [])
+        .filter(o => typeof o.label === 'string' && typeof o.value === 'string')
+        .map(o => ({ label: String(o.label), value: String(o.value) })),
+    }));
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       await this.http.get('/crm/v3/objects/companies', { params: { limit: 1 } });

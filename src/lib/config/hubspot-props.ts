@@ -42,6 +42,28 @@ export const HUBSPOT_COMPANY_PROPS = {
   primaryContactHubspotId: '',
   conversationsUsed: '',
   conversationsIncluded: '',
+  /**
+   * HubSpot company property che contiene l'identificativo numerico univoco dell'account Spoki
+   * (es. "12345"). Usato dal modulo NAR Dashboard per risolvere account_id → cs_owner_id senza
+   * caricare un CSV operatori manuale.
+   */
+  spokiCompanyIdUnique: 'spoki_company_id_unique',
+  /**
+   * Company property che contiene l'ID numerico del partner per gli account ingaggiati tramite
+   * un partner Spoki. Vuoto = cliente diretto. Usato dal modulo NAR per separare i bucket
+   * "Direct" da "Partner Child".
+   *
+   * Internal name configurabile via env `HUBSPOT_COMPANY_PROP_PARTNER_ID` (in attesa che l'admin
+   * lo derivi tramite GET /api/v1/hubspot/properties/discover?filter=partner). Lasciato vuoto
+   * finche' non configurato: senza valore valido viene escluso da {@link companyRawPropertyKeysForDb}.
+   */
+  partnerId: process.env.HUBSPOT_COMPANY_PROP_PARTNER_ID ?? '',
+  /**
+   * Company property che contiene la categoria del partner (es. "referral", "hubpanel", ecc.).
+   * Internal name configurabile via env `HUBSPOT_COMPANY_PROP_PARTNER_TYPE`. Vedi {@link partnerId}
+   * per la procedura di discovery.
+   */
+  partnerType: process.env.HUBSPOT_COMPANY_PROP_PARTNER_TYPE ?? '',
 } as const;
 
 /**

@@ -64,6 +64,27 @@ export const config = {
     publicKey: process.env.LANGFUSE_PUBLIC_KEY || '',
     secretKey: process.env.LANGFUSE_SECRET_KEY || '',
   },
+  nar: {
+    /**
+     * CSV di host autorizzati come destinazione del forwarder n8n
+     * (es. "n8n.spoki.com,n8n.spoki.it"). Vuoto = solo dev (qualsiasi host),
+     * in produzione richiesto.
+     */
+    n8nWebhookAllowlist: (process.env.NAR_N8N_WEBHOOK_ALLOWLIST || '')
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean),
+    /**
+     * Finestra (giorni) considerata dalla query Metabase quando si rigenera il dataset NAR.
+     * 90 = ~13 settimane, allineato con WEEK_COUNT_FOR_90_DAYS del vecchio dashboard.
+     */
+    refreshWindowDays: (() => {
+      const n = parseInt(process.env.NAR_REFRESH_WINDOW_DAYS || '90', 10);
+      return Number.isFinite(n) && n > 0 ? n : 90;
+    })(),
+    /** Cron locale in dev per il refresh NAR (mai in produzione: usa Vercel cron). */
+    refreshDevCron: process.env.NAR_REFRESH_DEV_CRON === '1',
+  },
   accountBrief: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
