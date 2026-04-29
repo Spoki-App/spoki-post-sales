@@ -118,6 +118,22 @@ async function generate(
 }
 
 /**
+ * Generic dispatcher esportato. Useful when the prompt is built dinamicamente
+ * (es. da template DB) e non ha senso vivere come funzione dedicata in questo file.
+ */
+export async function generateText(
+  prompt: string,
+  options?: { temperature?: number; maxOutputTokens?: number },
+): Promise<string> {
+  return generate(prompt, options);
+}
+
+/** Esposto per consentire ai servizi di parsare risposte JSON con la stessa logica usata internamente. */
+export function parseAiJsonResponse<T>(text: string): T {
+  return parseJsonResponse<T>(text);
+}
+
+/**
  * Lightweight Gemini call that forces a JSON response (used by goal extraction).
  * Kept separate from `generate()` because it sets `responseMimeType: 'application/json'`
  * which the dispatcher path does not.
