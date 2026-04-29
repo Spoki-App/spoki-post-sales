@@ -131,6 +131,21 @@ export function isAdminEmail(email: string | null | undefined): boolean {
   return getAdminEmails().has(resolved);
 }
 
+// Editor non-admin abilitati a leggere e creare draft sui template touchpoint
+// (pagina /admin/touchpoint-templates). Attivazione e creazione di nuovi tipi
+// restano riservate agli admin.
+const BUILTIN_TOUCHPOINT_TEMPLATE_EDITORS = [
+  'francesca.vitale@spoki.com',
+];
+
+export function isTouchpointTemplateEditor(email: string | null | undefined): boolean {
+  if (!email) return false;
+  if (isAdminEmail(email)) return true;
+  const normalized = email.toLowerCase();
+  const resolved = EMAIL_ALIASES[normalized] ?? normalized;
+  return BUILTIN_TOUCHPOINT_TEMPLATE_EDITORS.includes(resolved);
+}
+
 export function getOwnerByEmail(email: string | null | undefined): HubSpotOwner | null {
   if (!email) return null;
   const normalized = email.toLowerCase();

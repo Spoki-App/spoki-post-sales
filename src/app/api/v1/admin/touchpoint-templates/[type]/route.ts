@@ -6,7 +6,7 @@ import {
   ApiError,
   type RouteHandlerContext,
 } from '@/lib/api/middleware';
-import { isAdminEmail } from '@/lib/config/owners';
+import { isTouchpointTemplateEditor } from '@/lib/config/owners';
 import {
   getActiveTemplate,
   listTemplatesByType,
@@ -23,7 +23,9 @@ function parseType(params: Record<string, string | string[] | undefined>): strin
 export async function GET(request: NextRequest, context: RouteHandlerContext) {
   try {
     const auth = await authenticateRequest(request);
-    if (!isAdminEmail(auth.email)) throw new ApiError(403, 'Accesso riservato agli admin');
+    if (!isTouchpointTemplateEditor(auth.email)) {
+      throw new ApiError(403, 'Accesso riservato ai revisori dei template touchpoint');
+    }
 
     const params = await context.params;
     const type = parseType(params);
@@ -38,7 +40,9 @@ export async function GET(request: NextRequest, context: RouteHandlerContext) {
 export async function POST(request: NextRequest, context: RouteHandlerContext) {
   try {
     const auth = await authenticateRequest(request);
-    if (!isAdminEmail(auth.email)) throw new ApiError(403, 'Accesso riservato agli admin');
+    if (!isTouchpointTemplateEditor(auth.email)) {
+      throw new ApiError(403, 'Accesso riservato ai revisori dei template touchpoint');
+    }
 
     const params = await context.params;
     const type = parseType(params);

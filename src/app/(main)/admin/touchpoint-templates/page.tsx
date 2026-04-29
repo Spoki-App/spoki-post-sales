@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store/auth';
-import { isAdminEmail } from '@/lib/config/owners';
+import { isAdminEmail, isTouchpointTemplateEditor } from '@/lib/config/owners';
 import {
   touchpointTemplatesApi,
   type TouchpointTemplateRow,
@@ -36,10 +36,11 @@ export default function AdminTouchpointTemplatesPage() {
   const { token, user } = useAuthStore();
   const router = useRouter();
   const isAdmin = isAdminEmail(user?.email);
+  const canEdit = isTouchpointTemplateEditor(user?.email);
 
   useEffect(() => {
-    if (user && !isAdmin) router.replace('/dashboard');
-  }, [user, isAdmin, router]);
+    if (user && !canEdit) router.replace('/dashboard');
+  }, [user, canEdit, router]);
 
   const [types, setTypes] = useState<TouchpointTypeSummary[]>([]);
   const [selectedType, setSelectedType] = useState<string>('');
@@ -173,7 +174,7 @@ export default function AdminTouchpointTemplatesPage() {
     setInfo(`Caricata versione ${tpl.version} nell'editor (non ancora salvata)`);
   }
 
-  if (!user || !isAdmin) return null;
+  if (!user || !canEdit) return null;
 
   return (
     <div className="px-6 py-6 max-w-7xl mx-auto">
@@ -189,13 +190,15 @@ export default function AdminTouchpointTemplatesPage() {
             puoi tornare a una versione vecchia in qualsiasi momento.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateType(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Nuovo tipo
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowCreateType(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            Nuovo tipo
+          </button>
+        )}
       </header>
 
       {error && (
@@ -332,15 +335,18 @@ export default function AdminTouchpointTemplatesPage() {
                     {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     Salva bozza
                   </button>
-                  <button
-                    onClick={saveAndActivate}
-                    disabled={saving || !isDirty}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    Salva e attiva
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={saveAndActivate}
+                      disabled={saving || !isDirty}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                      Salva e attiva
+                    </button>
+                  )}
                   <span className="text-xs text-slate-500 ml-auto">
+                    {!isAdmin && 'Solo gli admin possono attivare nuove versioni. '}
                     {isDirty ? 'Modifiche non salvate' : 'Nessuna modifica'}
                   </span>
                 </div>
@@ -382,7 +388,7 @@ export default function AdminTouchpointTemplatesPage() {
                       >
                         Carica nell&apos;editor
                       </button>
-                      {!h.isActive && (
+                      {!h.isActive && isAdmin && (
                         <button
                           onClick={() => activateTemplate(h.id)}
                           disabled={activating === h.id}

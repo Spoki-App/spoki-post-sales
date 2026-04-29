@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
-import { getOwnerByEmail, isAdminEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
+import { getOwnerByEmail, isAdminEmail, isCustomerSuccessTeamMember, isTouchpointTemplateEditor } from '@/lib/config/owners';
 import { OperatorRoleBadges } from '@/components/ui/OperatorRoleBadges';
 import { cn } from '@/lib/utils/cn';
 import { useEffect, useState } from 'react';
@@ -30,6 +30,7 @@ export function Sidebar() {
   const loggedOwner = getOwnerByEmail(user?.email ?? '');
   const isAdmin = isAdminEmail(user?.email ?? '');
   const isCs = isCustomerSuccessTeamMember(loggedOwner);
+  const canEditTouchpointTemplates = isTouchpointTemplateEditor(user?.email ?? '');
 
   async function handleSignOut() {
     const auth = getFirebaseAuth();
@@ -141,6 +142,21 @@ export function Sidebar() {
             {label}
           </Link>
         ))}
+
+        {canEditTouchpointTemplates && !isAdmin && (
+          <Link
+            href="/admin/touchpoint-templates"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+              pathname === '/admin/touchpoint-templates'
+                ? 'bg-emerald-600 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            )}
+          >
+            <Shield className="w-4 h-4 shrink-0" />
+            Template domande call
+          </Link>
+        )}
 
         {isAdmin && (
           <div>
