@@ -5,13 +5,15 @@ import {
   createErrorResponse,
   ApiError,
 } from '@/lib/api/middleware';
-import { isAdminEmail } from '@/lib/config/owners';
+import { isAdminEmail, isTouchpointTemplateEditor } from '@/lib/config/owners';
 import { listTouchpointTypes, createNewType } from '@/lib/services/touchpoint-questions';
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await authenticateRequest(request);
-    if (!isAdminEmail(auth.email)) throw new ApiError(403, 'Accesso riservato agli admin');
+    if (!isTouchpointTemplateEditor(auth.email)) {
+      throw new ApiError(403, 'Accesso riservato ai revisori dei template touchpoint');
+    }
 
     const types = await listTouchpointTypes();
     return createSuccessResponse({ data: { types } });
