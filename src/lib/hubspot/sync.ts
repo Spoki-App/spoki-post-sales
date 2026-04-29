@@ -51,6 +51,9 @@ function companyRawPropertyKeysForDb(): Set<string> {
   addIfValid(HUBSPOT_COMPANY_PROPS.conversationsUsed);
   addIfValid(HUBSPOT_COMPANY_PROPS.conversationsIncluded);
   addIfValid(HUBSPOT_COMPANY_PROPS.accountQualityScore);
+  addIfValid(HUBSPOT_COMPANY_PROPS.spokiCompanyIdUnique);
+  addIfValid(HUBSPOT_COMPANY_PROPS.partnerId);
+  addIfValid(HUBSPOT_COMPANY_PROPS.partnerType);
   return keys;
 }
 

@@ -297,3 +297,32 @@ export interface AccountBriefPayload {
   fallback: boolean;
   context?: Record<string, unknown>;
 }
+
+// ─── NAR module re-exports ────────────────────────────────────────────────────
+export type {
+  NarUpload,
+  NarRow,
+  NarBucketKey,
+  NarBucketStats,
+  NarBucketResult,
+  NarFilterType,
+  NarFilters,
+  NarSnapshot,
+  NarSnapshotBucket,
+  NarSnapshotStats,
+  NarExclusionReason,
+  NarExcludedAccount,
+  NarOperatorSource,
+  NarOperatorEntry,
+  NarFindingSeverity,
+  NarSignalType,
+  NarFinding,
+  NarSignal,
+  NarPathAccount,
+  NarPathKey,
+  NarPlanRiskRow,
+  NarAction,
+  NarInsights,
+  NarN8nForwardRequest,
+  NarN8nForwardResult,
+} from './nar';

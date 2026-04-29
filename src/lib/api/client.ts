@@ -813,3 +813,113 @@ export const churnTrackerApi = {
   summary: (token: string) =>
     fetchApi<ApiResponse<ChurnSummary>>('/churn-tracker/summary', { token }),
 };
+
+// ─── NAR Dashboard ────────────────────────────────────────────────────────────
+import type {
+  NarUpload,
+  NarRow,
+  NarOperatorEntry,
+  NarExcludedAccount,
+  NarExclusionReason,
+  NarSnapshot,
+  NarSnapshotBucket,
+  NarSnapshotStats,
+  NarFilters,
+  NarFilterType,
+  NarBucketKey,
+  NarInsights,
+  NarN8nForwardResult,
+} from '@/types/nar';
+
+export interface NarOperatorUpsertInput {
+  accountId: number;
+  operatorName: string;
+  accountName?: string | null;
+  partnerType?: string | null;
+  plan?: string | null;
+  status?: string | null;
+}
+
+export const narApi = {
+  // ─── dataset ──────────────────────────────────────────────────────────────
+  listUploads: (token: string, limit?: number) =>
+    fetchApi<ApiResponse<NarUpload[]>>(`/nar/dataset${limit ? `?limit=${limit}` : ''}`, { token }),
+  uploadDataset: (token: string, body: { csv?: string; rows?: NarRow[]; fileName?: string; notes?: string }) =>
+    fetchApi<ApiResponse<{ id: string; rowCount: number }>>('/nar/dataset', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  getCurrentDataset: (token: string) =>
+    fetchApi<ApiResponse<{ upload: NarUpload | null; rows: NarRow[] }>>('/nar/dataset/current', { token }),
+
+  // ─── operators ────────────────────────────────────────────────────────────
+  listOperators: (token: string) =>
+    fetchApi<ApiResponse<NarOperatorEntry[]>>('/nar/operators', { token }),
+  uploadOperators: (token: string, body: { csv?: string; rows?: NarOperatorUpsertInput[] }) =>
+    fetchApi<ApiResponse<{ written: number }>>('/nar/operators', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  setOperator: (
+    token: string,
+    body: NarOperatorUpsertInput,
+  ) =>
+    fetchApi<ApiResponse<{ updated: boolean }>>('/nar/operators', {
+      method: 'PATCH', token, body: JSON.stringify(body),
+    }),
+
+  // ─── exclusions ───────────────────────────────────────────────────────────
+  listExclusions: (token: string, reason?: NarExclusionReason) =>
+    fetchApi<ApiResponse<NarExcludedAccount[]>>(
+      `/nar/exclusions${reason ? `?reason=${reason}` : ''}`, { token }
+    ),
+  addExclusion: (token: string, body: { accountId: number; reason: NarExclusionReason; accountName?: string | null; notes?: string | null }) =>
+    fetchApi<ApiResponse<{ added: boolean }>>('/nar/exclusions', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  removeExclusion: (token: string, accountId: number, reason: NarExclusionReason) =>
+    fetchApi<ApiResponse<{ removed: boolean }>>(
+      `/nar/exclusions?accountId=${accountId}&reason=${reason}`, { method: 'DELETE', token }
+    ),
+
+  // ─── snapshots ────────────────────────────────────────────────────────────
+  listSnapshots: (token: string) =>
+    fetchApi<ApiResponse<NarSnapshot[]>>('/nar/snapshots', { token }),
+  saveSnapshot: (token: string, body: {
+    label: string;
+    filterType: NarFilterType;
+    monthFilter: number[];
+    weekFilter: number[];
+    excludeWeekZero: boolean;
+    uploadId: string | null;
+    stats: NarSnapshotStats;
+    buckets: NarSnapshotBucket[];
+  }) =>
+    fetchApi<ApiResponse<{ id: string }>>('/nar/snapshots', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  deleteSnapshot: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ removed: boolean }>>(`/nar/snapshots?id=${id}`, { method: 'DELETE', token }),
+
+  // ─── insights ─────────────────────────────────────────────────────────────
+  generateInsights: (token: string, body: { uploadId?: string; filters: NarFilters; bucketKey?: NarBucketKey }) =>
+    fetchApi<ApiResponse<NarInsights | null>>('/nar/insights', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+
+  // ─── refresh da Metabase (sostituisce upload CSV nel flusso normale) ─────
+  refreshFromMetabase: (token: string) =>
+    fetchApi<ApiResponse<{
+      uploadId: string | null;
+      rowCount: number;
+      accountCount: number;
+      weeksCovered: number;
+      windowDays: number;
+      enrichedAccountCount: number;
+      unmatchedAccountCount: number;
+    }> & { warning?: string }>('/nar/dataset/refresh', { method: 'POST', token }),
+
+  // ─── n8n forward ──────────────────────────────────────────────────────────
+  n8nForward: (token: string, body: { webhookUrl: string; payload: Record<string, unknown> }) =>
+    fetchApi<ApiResponse<NarN8nForwardResult>>('/nar/n8n/forward', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+};
