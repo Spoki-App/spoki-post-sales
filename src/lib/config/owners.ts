@@ -7,6 +7,16 @@ export interface HubSpotOwner {
   lastName: string;
   team: HubSpotTeam;
   bookingUrl?: string;
+  /**
+   * True when the owner appears in a HubSpot Team labelled as Onboarding.
+   * Source of truth: HubSpot teams (see `scripts/derive-cs-roles.mjs`). Manual flag, not auto-synced.
+   */
+  isOnboardingOperator?: boolean;
+  /**
+   * True when the owner appears in a HubSpot Team labelled as Customer Success
+   * (post-onboarding success operator). Source of truth: HubSpot teams.
+   */
+  isSuccessOperator?: boolean;
 }
 
 /** HubSpot owner id for Marco Manigrassi (company owner / account brief portfolio). */
@@ -14,18 +24,20 @@ export const MARCO_MANIGRASSI_HUBSPOT_OWNER_ID = '75723356';
 
 export const HUBSPOT_OWNERS: Record<string, HubSpotOwner> = {
   // ─── Customer Success ────────────────────────────────────────────────────────
-  "75723356":   { id: "75723356",   email: "marco.manigrassi@spoki.it",      firstName: "Marco",      lastName: "Manigrassi",  team: "Customer Success" },
-  "75723364":   { id: "75723364",   email: "emanuela.locorotondo@spoki.it",  firstName: "Emanuela",   lastName: "Locorotondo", team: "Customer Success" },
-  "75723388":   { id: "75723388",   email: "antonella.mingolla@spoki.it",    firstName: "Antonella",  lastName: "Mingolla",    team: "Customer Success" },
-  "496361232":  { id: "496361232",  email: "daniela.pascale@spoki.it",       firstName: "Daniela",    lastName: "Pascale",     team: "Customer Success" },
-  "29723671":   { id: "29723671",   email: "francesca.vitale@spoki.com",     firstName: "Francesca",  lastName: "Vitale",      team: "Customer Success" },
-  "75723441":   { id: "75723441",   email: "claudia.depaola@spoki.it",       firstName: "Claudia",    lastName: "De Paola",    team: "Customer Success" },
-  "78965003":   { id: "78965003",   email: "giulio.trinchera@spoki.it",      firstName: "Giulio",     lastName: "Trinchera",   team: "Customer Success" },
-  "31909019":   { id: "31909019",   email: "katerina.khorzhan@spoki.com",    firstName: "Katerina",   lastName: "Khorzhan",    team: "Customer Success" },
-  "32876649":   { id: "32876649",   email: "lucrezia.terreni@spoki.com",     firstName: "Lucrezia",   lastName: "Terreni",     team: "Customer Success" },
-  "32686457":   { id: "32686457",   email: "riccardo.marino@spoki.com",      firstName: "Riccardo",   lastName: "Marino",      team: "Customer Success" },
-  "30448724":   { id: "30448724",   email: "antonella.dagnano@spoki.com",    firstName: "Antonella",  lastName: "D'Agnano",    team: "Customer Success" },
-  "33686350":   { id: "33686350",   email: "giovanni.caniglia@spoki.com",    firstName: "Gianluca",   lastName: "Caniglia",    team: "Customer Success" },
+  // Placeholder: tutti gli operatori CS sono marcati come Onboarding+Success finche' su HubSpot
+  // non saranno creati team distinti (Onboarding / Success). Rilanciare poi `npm run derive:cs-roles`.
+  "75723356":   { id: "75723356",   email: "marco.manigrassi@spoki.it",      firstName: "Marco",      lastName: "Manigrassi",  team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "75723364":   { id: "75723364",   email: "emanuela.locorotondo@spoki.it",  firstName: "Emanuela",   lastName: "Locorotondo", team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "75723388":   { id: "75723388",   email: "antonella.mingolla@spoki.it",    firstName: "Antonella",  lastName: "Mingolla",    team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "496361232":  { id: "496361232",  email: "daniela.pascale@spoki.it",       firstName: "Daniela",    lastName: "Pascale",     team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "29723671":   { id: "29723671",   email: "francesca.vitale@spoki.com",     firstName: "Francesca",  lastName: "Vitale",      team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "75723441":   { id: "75723441",   email: "claudia.depaola@spoki.it",       firstName: "Claudia",    lastName: "De Paola",    team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "78965003":   { id: "78965003",   email: "giulio.trinchera@spoki.it",      firstName: "Giulio",     lastName: "Trinchera",   team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "31909019":   { id: "31909019",   email: "katerina.khorzhan@spoki.com",    firstName: "Katerina",   lastName: "Khorzhan",    team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "32876649":   { id: "32876649",   email: "lucrezia.terreni@spoki.com",     firstName: "Lucrezia",   lastName: "Terreni",     team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "32686457":   { id: "32686457",   email: "riccardo.marino@spoki.com",      firstName: "Riccardo",   lastName: "Marino",      team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "30448724":   { id: "30448724",   email: "antonella.dagnano@spoki.com",    firstName: "Antonella",  lastName: "D'Agnano",    team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
+  "33686350":   { id: "33686350",   email: "giovanni.caniglia@spoki.com",    firstName: "Gianluca",   lastName: "Caniglia",    team: "Customer Success", isOnboardingOperator: true, isSuccessOperator: true },
 
   // ─── Customer Support ────────────────────────────────────────────────────────
   "76083950":   { id: "76083950",   email: "daniele.intermite@spoki.it",     firstName: "Daniele",    lastName: "Intermite",   team: "Customer Support" },
@@ -147,3 +159,14 @@ export function getOwnerInitials(ownerId: string | null | undefined): string {
 export const CS_TEAM = Object.values(HUBSPOT_OWNERS).filter(o => o.team === 'Customer Success');
 export const SUPPORT_TEAM = Object.values(HUBSPOT_OWNERS).filter(o => o.team === 'Customer Support');
 export const SALES_TEAM = Object.values(HUBSPOT_OWNERS).filter(o => o.team === 'Sales');
+
+export function isOnboardingOperator(owner: HubSpotOwner | null | undefined): boolean {
+  return Boolean(owner?.isOnboardingOperator);
+}
+
+export function isSuccessOperator(owner: HubSpotOwner | null | undefined): boolean {
+  return Boolean(owner?.isSuccessOperator);
+}
+
+export const ONBOARDING_OPERATORS = Object.values(HUBSPOT_OWNERS).filter(o => o.isOnboardingOperator);
+export const SUCCESS_OPERATORS = Object.values(HUBSPOT_OWNERS).filter(o => o.isSuccessOperator);
