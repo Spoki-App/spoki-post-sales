@@ -254,6 +254,97 @@ export const aiApi = {
       body: JSON.stringify({ clientId, type, customInstructions }),
       token,
     }),
+  generateTouchpointQuestions: (
+    token: string,
+    clientId: string,
+    type: string,
+    additionalContext?: string,
+  ) =>
+    fetchApi<ApiResponse<TouchpointQuestionsGeneration>>('/ai/touchpoint-questions', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, type, additionalContext }),
+      token,
+    }),
+  listTouchpointTypes: (token: string) =>
+    fetchApi<ApiResponse<{ types: TouchpointTypeSummary[] }>>('/ai/touchpoint-types', { token }),
+};
+
+// ─── Touchpoint Questions ─────────────────────────────────────────────────────
+
+export type TouchpointQuestionsOutput = {
+  objective: string;
+  talkingPoints: string[];
+  openingQuestions: string[];
+  discoveryQuestions: string[];
+  challengeQuestions: string[];
+  closingQuestions: string[];
+  redFlags: string[];
+};
+
+export type TouchpointQuestionsGeneration = {
+  template: { id: string; type: string; version: string; label: string };
+  questions: TouchpointQuestionsOutput;
+  generatedAt: string;
+};
+
+export type TouchpointTypeSummary = {
+  type: string;
+  label: string;
+  description: string | null;
+  hasActiveTemplate: boolean;
+  isSeed: boolean;
+};
+
+export type TouchpointTemplateRow = {
+  id: string;
+  touchpointType: string;
+  version: string;
+  label: string;
+  description: string | null;
+  systemPrompt: string;
+  isActive: boolean;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const touchpointTemplatesApi = {
+  /** Lista admin (richiede admin); per la modale lato CSM usare aiApi.listTouchpointTypes. */
+  list: (token: string) =>
+    fetchApi<ApiResponse<{ types: TouchpointTypeSummary[] }>>('/admin/touchpoint-templates', { token }),
+
+  get: (token: string, type: string) =>
+    fetchApi<ApiResponse<{ active: TouchpointTemplateRow; history: TouchpointTemplateRow[] }>>(
+      `/admin/touchpoint-templates/${encodeURIComponent(type)}`,
+      { token },
+    ),
+
+  createDraft: (
+    token: string,
+    type: string,
+    body: { systemPrompt: string; label?: string; description?: string | null; notes?: string | null },
+  ) =>
+    fetchApi<ApiResponse<TouchpointTemplateRow>>(
+      `/admin/touchpoint-templates/${encodeURIComponent(type)}`,
+      { method: 'POST', token, body: JSON.stringify(body) },
+    ),
+
+  activate: (token: string, type: string, id: string) =>
+    fetchApi<ApiResponse<TouchpointTemplateRow>>(
+      `/admin/touchpoint-templates/${encodeURIComponent(type)}/activate`,
+      { method: 'POST', token, body: JSON.stringify({ id }) },
+    ),
+
+  createType: (
+    token: string,
+    body: { type: string; label: string; description?: string | null; systemPrompt: string },
+  ) =>
+    fetchApi<ApiResponse<TouchpointTemplateRow>>('/admin/touchpoint-templates', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
 };
 
 // ─── QBR ──────────────────────────────────────────────────────────────────────
