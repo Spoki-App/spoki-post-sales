@@ -117,6 +117,20 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
     const chunk = companies.slice(i, i + CHUNK);
 
     const hubspotIds = chunk.map(c => c.id);
+
+    // Defensive: if the associations call returned nothing for a company (e.g. transient
+    // 401 / partial failure), keep the previously stored primary contact id rather than
+    // wiping it from raw_properties on the upsert below.
+    const existingPrimaryRows = await pgQuery<{ hubspot_id: string; primary_vid: string | null }>(
+      `SELECT hubspot_id, raw_properties->>'${SYNC_RAW_PRIMARY_CONTACT_HUBSPOT_ID_KEY}' AS primary_vid
+         FROM clients
+        WHERE hubspot_id = ANY($1::text[])`,
+      [hubspotIds]
+    );
+    const existingPrimaryByHubspotId: Record<string, string> = {};
+    for (const row of existingPrimaryRows) {
+      if (row.primary_vid) existingPrimaryByHubspotId[row.hubspot_id] = row.primary_vid;
+    }
     const names = chunk.map(c => c.name ?? '');
     const domains = chunk.map(c => c.domain);
     const industries = chunk.map(c => c.industry);
@@ -135,7 +149,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
     const companyRawKeep = companyRawPropertyKeysForDb();
     const rawProps = chunk.map(c => {
       const base = pickKeys(c.rawProperties, companyRawKeep);
-      const primaryVid = primaryByCompanyHubspotId[c.id];
+      const primaryVid = primaryByCompanyHubspotId[c.id] ?? existingPrimaryByHubspotId[c.id];
       if (primaryVid) {
         (base as Record<string, unknown>)[SYNC_RAW_PRIMARY_CONTACT_HUBSPOT_ID_KEY] = primaryVid;
       }
