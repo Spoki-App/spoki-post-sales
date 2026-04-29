@@ -156,6 +156,20 @@ export interface HSDeal {
   stageEnteredAt: string | null;
 }
 
+export interface HSOwnerTeam {
+  id: string;
+  name: string;
+  primary: boolean;
+}
+
+export interface HSOwner {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  teams: HSOwnerTeam[];
+}
+
 /** HubSpot picklist / multi-checkbox values may use `;` or `,` between labels. */
 function parseHubspotMultiSelectLabels(value: string | null | undefined): string[] {
   if (value == null || value === '') return [];
@@ -1245,6 +1259,52 @@ class HubSpotClient {
     );
 
     return noteId;
+  }
+
+  /**
+   * Returns all active HubSpot owners with their team memberships.
+   * Uses `properties=teams` to include the embedded `teams` array (id, name, primary).
+   */
+  async getOwners(): Promise<HSOwner[]> {
+    logger.info('Fetching owners from HubSpot');
+
+    const results: HSOwner[] = [];
+    let after: string | undefined;
+
+    do {
+      const response = await this.getWithRetry('/crm/v3/owners', {
+        limit: 100,
+        archived: false,
+        properties: 'teams',
+        ...(after ? { after } : {}),
+      });
+
+      const { results: items, paging } = response.data as {
+        results: Array<{
+          id: string;
+          email?: string | null;
+          firstName?: string | null;
+          lastName?: string | null;
+          teams?: Array<{ id: string; name: string; primary?: boolean }>;
+        }>;
+        paging?: { next?: { after: string } };
+      };
+
+      for (const item of items) {
+        results.push({
+          id: item.id,
+          email: item.email ?? null,
+          firstName: item.firstName ?? null,
+          lastName: item.lastName ?? null,
+          teams: (item.teams ?? []).map(t => ({ id: t.id, name: t.name, primary: Boolean(t.primary) })),
+        });
+      }
+
+      after = paging?.next?.after;
+    } while (after);
+
+    logger.info(`Fetched ${results.length} owners from HubSpot`);
+    return results;
   }
 
   async healthCheck(): Promise<boolean> {

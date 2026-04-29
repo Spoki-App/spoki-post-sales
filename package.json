@@ -9,7 +9,8 @@
     "lint": "eslint",
     "migrate": "node --env-file=.env.local scripts/migrate.mjs",
     "sync:cron": "node scripts/sync-cron.mjs",
-    "backfill:transcripts": "node --env-file=.env.local scripts/backfill-transcripts.mjs"
+    "backfill:transcripts": "node --env-file=.env.local scripts/backfill-transcripts.mjs",
+    "derive:cs-roles": "node --env-file=.env.local scripts/derive-cs-roles.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

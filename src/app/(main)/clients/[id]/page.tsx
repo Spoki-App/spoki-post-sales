@@ -14,7 +14,8 @@ import { getOwnerName } from '@/lib/config/owners';
 import { WorkflowEnrollModal } from '@/components/ui/WorkflowEnrollModal';
 import { EmailGeneratorModal } from '@/components/ui/EmailGeneratorModal';
 import { QbrModal } from '@/components/ui/QbrModal';
-import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, Zap, Sparkles, Loader2, Presentation, Target, ChevronDown, ChevronUp } from 'lucide-react';
+import { TouchpointQuestionsModal } from '@/components/ui/TouchpointQuestionsModal';
+import { ArrowLeft, Phone, Globe, Building2, Mail, Calendar, AlertTriangle, CheckSquare, MessageSquare, MessageCircleQuestion, Zap, Sparkles, Loader2, Presentation, Target, ChevronDown, ChevronUp } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import type { Client, ClientGoal, ClientDeal, Ticket, Engagement, Contact, Task, OnboardingProgress, AccountBriefPayload } from '@/types';
@@ -89,6 +90,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showQbrModal, setShowQbrModal] = useState(false);
+  const [showTouchpointModal, setShowTouchpointModal] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<{
     summary: string; riskLevel: string; strengths: string[];
     concerns: string[]; actions: Array<{ title: string; priority: string; description: string }>;
@@ -340,6 +342,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           >
             <Mail className="w-4 h-4" />
             Email
+          </button>
+          <button
+            onClick={() => setShowTouchpointModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+          >
+            <MessageCircleQuestion className="w-4 h-4" />
+            Domande call
           </button>
           <button
             onClick={() => setShowWorkflowModal(true)}
@@ -1117,6 +1126,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       <QbrModal
         open={showQbrModal}
         onClose={() => setShowQbrModal(false)}
+        clientId={id}
+        clientName={client.name}
+      />
+      <TouchpointQuestionsModal
+        open={showTouchpointModal}
+        onClose={() => setShowTouchpointModal(false)}
         clientId={id}
         clientName={client.name}
       />

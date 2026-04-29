@@ -6,6 +6,7 @@ import { signOut } from 'firebase/auth';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
 import { getOwnerByEmail, isAdminEmail, isCustomerSuccessTeamMember } from '@/lib/config/owners';
+import { OperatorRoleBadges } from '@/components/ui/OperatorRoleBadges';
 import { cn } from '@/lib/utils/cn';
 import { useEffect, useState } from 'react';
 import {
@@ -26,8 +27,9 @@ import {
 export function Sidebar() {
   const pathname = usePathname();
   const { user, signOut: clearAuth } = useAuthStore();
+  const loggedOwner = getOwnerByEmail(user?.email ?? '');
   const isAdmin = isAdminEmail(user?.email ?? '');
-  const isCs = isCustomerSuccessTeamMember(getOwnerByEmail(user?.email ?? ''));
+  const isCs = isCustomerSuccessTeamMember(loggedOwner);
 
   async function handleSignOut() {
     const auth = getFirebaseAuth();
@@ -152,6 +154,7 @@ export function Sidebar() {
                 { href: '/admin/training-reports', label: 'Training' },
                 { href: '/admin/prompts', label: 'Prompt e criteri' },
                 { href: '/admin/ai-monitoring', label: 'Monitoraggio AI' },
+                { href: '/admin/touchpoint-templates', label: 'Template domande call' },
               ].map(({ href, label }) => {
                 const active = pathname === href;
                 return (
@@ -184,11 +187,14 @@ export function Sidebar() {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-medium text-slate-200 truncate">{user.displayName ?? user.email}</p>
-              {isAdmin && (
-                <p className="mt-0.5 inline-flex items-center rounded-full bg-emerald-700/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
-                  Admin
-                </p>
-              )}
+              <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                {isAdmin && (
+                  <span className="inline-flex items-center rounded-full bg-emerald-700/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+                    Admin
+                  </span>
+                )}
+                <OperatorRoleBadges owner={loggedOwner} theme="dark" />
+              </div>
             </div>
           </div>
         )}
