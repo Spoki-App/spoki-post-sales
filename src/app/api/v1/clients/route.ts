@@ -121,7 +121,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       contact_last_name: string | null;
       contact_email: string | null;
       contact_hubspot_id: string | null;
-      sd_pipeline_id: string | null; sd_stage_id: string | null; sd_deal_name: string | null; sd_amount: string | null; sd_close_date: string | null; sd_stage_entered_at: string | null;
+      sd_pipeline_id: string | null; sd_stage_id: string | null; sd_deal_name: string | null; sd_amount: string | null; sd_close_date: string | null; sd_stage_entered_at: string | null; sd_owner_id: string | null;
       ud_pipeline_id: string | null; ud_stage_id: string | null; ud_deal_name: string | null; ud_amount: string | null; ud_close_date: string | null; ud_stage_entered_at: string | null;
       churn_risk: string | null;
       raw_properties: unknown;
@@ -166,7 +166,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
         cp.last_name AS contact_last_name,
         cp.email AS contact_email,
         cp.hubspot_id AS contact_hubspot_id,
-        sd.pipeline_id AS sd_pipeline_id, sd.stage_id AS sd_stage_id, sd.deal_name AS sd_deal_name, sd.amount::text AS sd_amount, sd.close_date::text AS sd_close_date, sd.stage_entered_at::text AS sd_stage_entered_at,
+        sd.pipeline_id AS sd_pipeline_id, sd.stage_id AS sd_stage_id, sd.deal_name AS sd_deal_name, sd.amount::text AS sd_amount, sd.close_date::text AS sd_close_date, sd.stage_entered_at::text AS sd_stage_entered_at, sd.owner_id AS sd_owner_id,
         ud.pipeline_id AS ud_pipeline_id, ud.stage_id AS ud_stage_id, ud.deal_name AS ud_deal_name, ud.amount::text AS ud_amount, ud.close_date::text AS ud_close_date, ud.stage_entered_at::text AS ud_stage_entered_at
       FROM paged
       LEFT JOIN LATERAL (
@@ -185,7 +185,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
       ) le ON true
       ${contactPersonLateralSql}
       LEFT JOIN LATERAL (
-        SELECT pipeline_id, stage_id, deal_name, amount, close_date, stage_entered_at
+        SELECT pipeline_id, stage_id, deal_name, amount, close_date, stage_entered_at, owner_id
         FROM deals WHERE client_id = paged.id AND pipeline_id = '671838099'
         ORDER BY updated_at DESC LIMIT 1
       ) sd ON true
@@ -257,6 +257,7 @@ export const GET = withAuth(async (request: NextRequest, auth: AuthenticatedRequ
           totalStages: getTotalStages(r.sd_pipeline_id!), isClosed: cfg?.isClosed ?? false, isWon: cfg?.isWon ?? false,
           dealName: r.sd_deal_name, amount: r.sd_amount ? parseFloat(r.sd_amount) : null,
           closeDate: r.sd_close_date, daysInStage,
+          ownerId: r.sd_owner_id,
         };
       })() : null,
       upsellingDeal: r.ud_pipeline_id ? (() => {

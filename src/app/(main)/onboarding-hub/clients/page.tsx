@@ -280,6 +280,7 @@ export default function OnboardingClientsPage() {
                   { label: 'Company Owner', key: 'owner' },
                   { label: 'Ticket Support', key: 'support' },
                   { label: 'Ultimo contatto', key: 'lastContact' },
+                  { label: 'Deal Owner', key: '' },
                   { label: 'Rinnovo', key: 'renewal' },
                 ] as const).map(col => (
                   <th
@@ -323,12 +324,13 @@ export default function OnboardingClientsPage() {
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-20" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-24" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-32" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-24" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-slate-100 rounded w-20" /></td>
                     <td className="px-4 py-3" />
                   </tr>
                 ))
               ) : clients.length === 0 ? (
-                <tr><td colSpan={13} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
+                <tr><td colSpan={14} className="py-12 text-center text-slate-400">Nessun cliente trovato.</td></tr>
               ) : (
                 clients.map(c => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -459,6 +461,11 @@ export default function OnboardingClientsPage() {
                       ) : (
                         <span className="text-red-500 text-xs font-medium">Nessun contatto</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                      {c.salesDeal?.ownerId
+                        ? getOwnerName(c.salesDeal.ownerId)
+                        : <span className="text-slate-400 text-xs">--</span>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap min-w-[120px]">
                       <RenewalCell date={c.renewalDate} />

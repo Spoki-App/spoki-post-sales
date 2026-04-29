@@ -228,6 +228,7 @@ export interface DealSummary {
   amount: number | null;
   closeDate: string | null;
   daysInStage: number | null;
+  ownerId: string | null;
 }
 
 export interface ClientDeal {
