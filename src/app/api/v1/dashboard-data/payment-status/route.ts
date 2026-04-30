@@ -11,7 +11,7 @@ SELECT
   amount_without_vat,
   plan_slug,
   description
-FROM "gold-prd-data-platform-db".payment_lines_current
+FROM gold_data.payment_lines_current
 WHERE account_id = ${accountId}
   AND payment_date >= CURRENT_DATE - INTERVAL '3' MONTH
   AND is_refund = false
@@ -22,7 +22,7 @@ ORDER BY payment_date DESC
 function buildFailedPaymentsQuery(accountIds: number[]) {
   return `
 SELECT DISTINCT account_id
-FROM "gold-prd-data-platform-db".payment_lines_current
+FROM gold_data.payment_lines_current
 WHERE account_id IN (${accountIds.join(',')})
   AND payment_date >= CURRENT_DATE - INTERVAL '30' DAY
   AND is_refund = false

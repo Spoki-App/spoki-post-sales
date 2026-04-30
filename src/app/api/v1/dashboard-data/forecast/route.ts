@@ -3,7 +3,7 @@ import { withAuth, createSuccessResponse, createErrorResponse, ApiError } from '
 import { fetchTable } from '@/lib/services/metabase';
 import { isConfigured } from '@/lib/config';
 
-const MRR_TABLE_ID = 40;
+const MRR_TABLE_ID = 225; // finance_mart.mrr_monthly_internal_v
 
 function toNum(v: unknown): number {
   const n = parseFloat(String(v));

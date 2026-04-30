@@ -16,7 +16,7 @@ SELECT
   SUM(c.conversation_count) AS used,
   MAX(c.max_conversations_available) AS available
 FROM usage_analytics_mart.conversation_usage_daily c
-JOIN "silver-prd-data-platform-db".accounts a ON a.id = c.account_id
+JOIN silver_data.accounts a ON a.id = c.account_id
 WHERE c.recharge_start_datetime >= DATE_ADD('day', -${days}, CURRENT_TIMESTAMP)
   AND c.max_conversations_available > 0
 GROUP BY a.hs_id, a.name

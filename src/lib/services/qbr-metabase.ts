@@ -49,7 +49,7 @@ const EMPTY: QbrUsageData = {
 function resolveAccountIdQuery(hsId: string) {
   return `
 SELECT a.id, a.name
-FROM "silver-prd-data-platform-db".accounts a
+FROM silver_data.accounts a
 WHERE CAST(a.hs_id AS VARCHAR) = '${hsId}'
 LIMIT 1
 `;
@@ -59,7 +59,7 @@ function mrrHistoryQuery(accountId: number) {
   return `
 SELECT
   month, mrr_amount, plan_slug, conversations
-FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal_v
+FROM finance_mart.mrr_monthly_internal_v
 WHERE account_id = ${accountId}
   AND month >= DATE_FORMAT(DATE_ADD('month', -3, CURRENT_DATE), '%Y-%m')
 ORDER BY month DESC
@@ -70,7 +70,7 @@ function paymentsQuery(accountId: number) {
   return `
 SELECT
   payment_type, amount_without_vat
-FROM "gold-prd-data-platform-db".payment_lines_current
+FROM gold_data.payment_lines_current
 WHERE account_id = ${accountId}
   AND payment_date >= CURRENT_DATE - INTERVAL '3' MONTH
   AND is_refund = false

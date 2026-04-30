@@ -13,7 +13,7 @@ WITH latest_active AS (
       PARTITION BY account_id
       ORDER BY subscription_end_date DESC, payment_date DESC
     ) AS rn
-  FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal
+  FROM finance_mart.mrr_monthly_internal_v
   WHERE mrr_amount > 0
 ),
 expired AS (
@@ -25,7 +25,7 @@ expired AS (
 renewals AS (
   SELECT DISTINCT m.account_id
   FROM expired e
-  JOIN "finance-mart-prd-data-platform-db".mrr_monthly_internal m
+  JOIN finance_mart.mrr_monthly_internal_v m
     ON e.account_id = m.account_id
     AND m.subscription_start_date >= e.subscription_end_date
     AND m.mrr_amount > 0
@@ -35,7 +35,7 @@ first_plans AS (
   FROM (
     SELECT account_id, plan_slug,
            ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY subscription_start_date ASC) AS rn
-    FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal
+    FROM finance_mart.mrr_monthly_internal_v
     WHERE mrr_amount > 0
   ) t WHERE t.rn = 1
 ),
@@ -45,8 +45,8 @@ primary_contacts AS (
     u.firstname || ' ' || u.surname || ' - ' || u.email
       || COALESCE(' - ' || u.phone, '') AS primary_contact,
     ROW_NUMBER() OVER (PARTITION BY r.account_id ORDER BY u.id) AS rn
-  FROM "silver-prd-data-platform-db".roles r
-  JOIN "silver-prd-data-platform-db".users u ON r.user_id = u.id
+  FROM silver_data.roles r
+  JOIN silver_data.users u ON r.user_id = u.id
   WHERE r.is_active = true AND r.role = 1
 )
 SELECT
@@ -58,7 +58,7 @@ SELECT
   e.first_payment_date, fp.first_plan_slug, pc.primary_contact
 FROM expired e
 LEFT JOIN renewals r ON e.account_id = r.account_id
-LEFT JOIN "silver-prd-data-platform-db".accounts acc ON e.account_id = acc.id
+LEFT JOIN silver_data.accounts acc ON e.account_id = acc.id
 LEFT JOIN first_plans fp ON e.account_id = fp.account_id
 LEFT JOIN primary_contacts pc ON e.account_id = pc.account_id AND pc.rn = 1
 WHERE r.account_id IS NULL
