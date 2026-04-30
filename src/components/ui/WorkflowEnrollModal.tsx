@@ -134,7 +134,7 @@ export function WorkflowEnrollModal({ open, onClose, companyName, clientId }: Pr
         {/* Workflow action cards */}
         {selectedContact && (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            <p className="text-xs text-slate-500 mb-1">Scegli l'azione da avviare per <span className="font-medium text-slate-700">{contactName}</span>:</p>
+            <p className="text-xs text-slate-500 mb-1">Scegli l&apos;azione da avviare per <span className="font-medium text-slate-700">{contactName}</span>:</p>
             {AI_VOICE_WORKFLOWS.map(wf => {
               const Icon = WORKFLOW_ICONS[wf.icon];
               const key = `${wf.hubspotFlowId}-${selectedContact.hubspotId}`;

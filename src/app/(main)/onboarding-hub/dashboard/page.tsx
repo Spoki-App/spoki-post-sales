@@ -7,6 +7,7 @@ import { onboardingHubApi } from '@/lib/api/client';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Users, AlertTriangle, CheckCircle2, Loader2, ChevronRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import type { OnboardingHubDashboardData } from '@/types';
 
 function formatMrr(n: number) {
   return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
@@ -32,20 +33,9 @@ function KpiCard({ title, value, sub, icon: Icon, color }: {
   );
 }
 
-type DashboardData = {
-  owner: string;
-  totalInOnboarding: number;
-  completedCount: number;
-  problemCount: number;
-  activeCount: number;
-  happyPathStages: Array<{ id: string; label: string; count: number }>;
-  problemStages: Array<{ id: string; label: string; count: number }>;
-  renewals: Record<string, { count: number; totalMrr: number }>;
-};
-
 export default function OnboardingDashboardPage() {
   const { token } = useAuthStore();
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<OnboardingHubDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

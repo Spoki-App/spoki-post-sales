@@ -5,18 +5,9 @@ import Link from 'next/link';
 import { differenceInDays } from 'date-fns';
 import { ONBOARDING_HAPPY_PATH, ONBOARDING_PROBLEM_STAGES, ONBOARDING_PROBLEM_IDS } from '@/lib/config/onboarding-pipeline';
 import { formatMrrDisplay } from '@/lib/format/mrr';
+import type { OnboardingHubPipelineCard } from '@/types';
 
-export interface OnboardingCard {
-  clientId: string;
-  hubspotId: string;
-  name: string;
-  domain: string | null;
-  mrr: number | null;
-  plan: string | null;
-  stage: string | null;
-  activatedAt: string | null;
-  openedAt: string | null;
-}
+export type OnboardingCard = OnboardingHubPipelineCard;
 
 interface Props {
   cards: OnboardingCard[];

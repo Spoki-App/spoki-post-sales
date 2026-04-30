@@ -5,6 +5,8 @@ export interface Client {
   name: string;
   domain: string | null;
   industry: string | null;
+  /** HubSpot `industry_spoki` (vertical Spoki), sincronizzato con CRM */
+  industrySpoki?: string | null;
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -164,6 +166,33 @@ export interface OnboardingProgress {
   startedAt: string | null;
   completedAt: string | null;
   updatedAt: string;
+}
+
+export interface OnboardingHubDashboardData {
+  owner: string;
+  totalInOnboarding: number;
+  completedCount: number;
+  problemCount: number;
+  activeCount: number;
+  happyPathStages: Array<{ id: string; label: string; count: number }>;
+  problemStages: Array<{ id: string; label: string; count: number }>;
+  renewals: Record<string, { count: number; totalMrr: number }>;
+}
+
+export interface OnboardingHubPipelineCard {
+  clientId: string;
+  hubspotId: string;
+  name: string;
+  domain: string | null;
+  mrr: number | null;
+  plan: string | null;
+  stage: string | null;
+  activatedAt: string | null;
+  openedAt: string | null;
+}
+
+export interface OnboardingHubPipelineData {
+  cards: OnboardingHubPipelineCard[];
 }
 
 // ─── Alert ────────────────────────────────────────────────────────────────────

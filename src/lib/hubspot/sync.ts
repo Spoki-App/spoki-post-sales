@@ -123,6 +123,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
     const names = chunk.map(c => c.name ?? '');
     const domains = chunk.map(c => c.domain);
     const industries = chunk.map(c => c.industry);
+    const industrySpokis = chunk.map(c => c.industrySpoki);
     const cities = chunk.map(c => c.city);
     const countries = chunk.map(c => c.country);
     const phones = chunk.map(c => c.phone);
@@ -147,17 +148,17 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
 
     await pgQuery(
       `INSERT INTO clients (
-        hubspot_id, name, domain, industry, city, country, phone,
+        hubspot_id, name, domain, industry, industry_spoki, city, country, phone,
         lifecycle_stage, plan, mrr, contract_value, contract_start_date,
         renewal_date, onboarding_status, cs_owner_id, onboarding_owner_id, success_owner_id, churn_risk,
         last_contact_date, raw_properties, last_synced_at, updated_at
       )
       SELECT * FROM UNNEST(
-        $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
-        $8::text[], $9::text[], $10::numeric[], $11::numeric[], $12::date[],
-        $13::date[], $14::text[], $15::text[], $16::text[], $17::text[], $18::text[],
-        $19::timestamptz[], $20::jsonb[], $21::timestamptz[], $22::timestamptz[]
-      ) AS t(hubspot_id, name, domain, industry, city, country, phone,
+        $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[],
+        $9::text[], $10::text[], $11::numeric[], $12::numeric[], $13::date[],
+        $14::date[], $15::text[], $16::text[], $17::text[], $18::text[], $19::text[],
+        $20::timestamptz[], $21::jsonb[], $22::timestamptz[], $23::timestamptz[]
+      ) AS t(hubspot_id, name, domain, industry, industry_spoki, city, country, phone,
              lifecycle_stage, plan, mrr, contract_value, contract_start_date,
              renewal_date, onboarding_status, cs_owner_id, onboarding_owner_id, success_owner_id, churn_risk,
              last_contact_date, raw_properties, last_synced_at, updated_at)
@@ -165,6 +166,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
         name                 = EXCLUDED.name,
         domain               = EXCLUDED.domain,
         industry             = EXCLUDED.industry,
+        industry_spoki       = EXCLUDED.industry_spoki,
         city                 = EXCLUDED.city,
         country              = EXCLUDED.country,
         phone                = EXCLUDED.phone,
@@ -184,7 +186,7 @@ async function syncCompanies(companies: HSCompany[]): Promise<number> {
         last_synced_at       = NOW(),
         updated_at           = NOW()`,
       [
-        hubspotIds, names, domains, industries, cities, countries, phones,
+        hubspotIds, names, domains, industries, industrySpokis, cities, countries, phones,
         lifecycleStages, plans, mrrs, contractValues, contractStartDates,
         renewalDates, onboardingStatuses,
         chunk.map(c => c.companyOwnerId),

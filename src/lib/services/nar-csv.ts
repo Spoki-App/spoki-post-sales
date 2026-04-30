@@ -86,7 +86,7 @@ export function parseNarCsv(input: string): NarRow[] {
   });
   return result.data
     .map(normalizeNarRow)
-    .filter(r => r.accountId > 0);
+    .filter((r: NarRow) => r.accountId > 0);
 }
 
 /** Riga normalizzata da CSV operatori (export HubSpot, colonne tipo "Spoki Company ID Unique"). */
@@ -106,7 +106,7 @@ export function parseOperatorsCsv(input: string): ParsedOperatorRow[] {
     quoteChar: '"',
   });
   return result.data
-    .map(row => ({
+    .map((row: Record<string, unknown>) => ({
       accountId: toAccountId(pickString(row, 'Spoki Company ID Unique', 'spoki_company_id_unique', 'spoki_company_id', 'account_id')),
       accountName: pickString(row, 'Company name', 'company_name', 'account_name'),
       operator: getRowCompanyOwner(row) || 'Non assegnato',
@@ -114,5 +114,5 @@ export function parseOperatorsCsv(input: string): ParsedOperatorRow[] {
       plan: pickString(row, 'Plan activated', 'plan_activated', 'plan_slug'),
       status: pickString(row, 'Contract Status', 'contract_status', 'status'),
     }))
-    .filter(r => r.accountId > 0);
+    .filter((r: ParsedOperatorRow) => r.accountId > 0);
 }

@@ -19,10 +19,12 @@ import {
   ChevronDown,
   GraduationCap,
   HeartHandshake,
+  Factory,
   Database,
   AlertTriangle,
   Shield,
   Activity,
+  TrendingUp,
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -120,6 +122,18 @@ export function Sidebar() {
                   </Link>
                 );
               })}
+              <Link
+                href="/industries"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                  pathname?.startsWith('/industries')
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                )}
+              >
+                <Factory className="w-4 h-4 shrink-0" />
+                Industries
+              </Link>
             </div>
           </div>
         )}
@@ -129,6 +143,7 @@ export function Sidebar() {
           { href: '/tasks', label: 'Task', Icon: CheckSquare },
           { href: '/alerts', label: 'Alert', Icon: Bell },
           { href: '/churn-tracker', label: 'Churn Tracker', Icon: AlertTriangle },
+          { href: '/market-analysis', label: 'Analisi di mercato', Icon: TrendingUp },
           { href: '/reports', label: 'Report', Icon: BarChart3 },
         ].map(({ href, label, Icon }) => (
           <Link
@@ -136,7 +151,9 @@ export function Sidebar() {
             href={href}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-              pathname === href ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              pathname === href || (href === '/market-analysis' && pathname?.startsWith('/market-analysis'))
+                ? 'bg-emerald-600 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />

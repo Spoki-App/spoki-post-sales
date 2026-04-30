@@ -191,7 +191,7 @@ export type TxQuery = <T extends QueryResultRow = Record<string, unknown>>(
 export async function pgTransaction<T>(fn: (q: TxQuery) => Promise<T>): Promise<T> {
   const p = await getPool();
   const client: PoolClient = await p.connect();
-  const txQuery: TxQuery = (text, params) => client.query(text, params) as Promise<QueryResult<QueryResultRow>> as ReturnType<TxQuery>;
+  const txQuery = ((text: string, params?: unknown[]) => client.query(text, params)) as TxQuery;
   try {
     await client.query('BEGIN');
     const result = await fn(txQuery);

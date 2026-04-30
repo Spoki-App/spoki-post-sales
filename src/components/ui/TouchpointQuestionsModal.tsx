@@ -243,7 +243,7 @@ export function TouchpointQuestionsModal({ open, onClose, clientId, clientName }
 
               {selectedTypeMeta && !selectedTypeMeta.hasActiveTemplate && selectedTypeMeta.isSeed && (
                 <p className="text-[11px] text-slate-500 italic">
-                  Nessun template salvato per questo tipo: verra' usato il prompt di default integrato.
+                  Nessun template salvato per questo tipo: verrà usato il prompt di default integrato.
                 </p>
               )}
             </>
