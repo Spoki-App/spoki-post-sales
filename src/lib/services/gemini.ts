@@ -111,10 +111,15 @@ async function generate(
   prompt: string,
   options?: { temperature?: number; maxOutputTokens?: number },
 ): Promise<string> {
-  if (AI_PROVIDER === 'claude' && ANTHROPIC_API_KEY) {
-    return generateWithClaude(prompt, options);
+  if (AI_PROVIDER === 'gemini') {
+    return generateWithGemini(prompt, options);
   }
-  return generateWithGemini(prompt, options);
+  if (!ANTHROPIC_API_KEY) {
+    throw new Error(
+      'AI: default Claude — imposta ANTHROPIC_API_KEY in .env oppure usa AI_PROVIDER=gemini con GOOGLE_AI_API_KEY'
+    );
+  }
+  return generateWithClaude(prompt, options);
 }
 
 /**
@@ -475,6 +480,90 @@ Stima la distribuzione rischio basandoti sui dati. Identifica max 5 rischi e 3 o
       topRisks: [],
       topOpportunities: [],
       recommendations: [],
+    };
+  }
+}
+
+export interface IndustryWaStrategy {
+  title: string;
+  objective: string;
+  tactics: string[];
+  exampleTemplate: string;
+  kpis: string[];
+  complianceNote: string;
+}
+
+export interface IndustryWaStrategiesResult {
+  executiveSummary: string;
+  strategies: IndustryWaStrategy[];
+}
+
+export async function generateIndustryWhatsAppStrategies(params: {
+  industryLabel: string;
+  clientCount: number | null;
+  industryHubspotKey: string | null;
+}): Promise<IndustryWaStrategiesResult> {
+  const keyLine =
+    params.industryHubspotKey && params.industryHubspotKey !== '__unclassified__'
+      ? `Valore tecnico industry (HubSpot industry_spoki): ${params.industryHubspotKey}.`
+      : '';
+
+  const countLine =
+    params.clientCount != null && params.clientCount >= 0
+      ? `Clienti nel segmento nel portafoglio considerato: ${params.clientCount}.`
+      : 'Numero clienti nel segmento: non indicato.';
+
+  const prompt = `Sei un esperto di marketing conversazionale su WhatsApp Business (API ufficiale Meta) e di automazioni per il mercato italiano ed europeo.
+
+Contesto: i destinatari delle strategie sono team Customer Success / Growth che usano **Spoki** (piattaforma per WhatsApp Business, inbox, automazioni, integrazioni CRM).
+
+VERTICAL / SEGMENTO (da usare come focus principale):
+"${params.industryLabel}"
+${keyLine}
+${countLine}
+
+Genera **4–6 strategie** distinte (acquisizione lead, nurturing, retention, upsell/cross-sell, riattivazione, eventi/stagionalità del vertical, ecc.) **specifiche per questo vertical** e per canale WhatsApp.
+
+Per ogni strategia sii concreto: segmentazione, tipo di messaggio, momenti del customer journey, uso di template vs sessioni a 24h dove rilevante.
+
+Rispondi **SOLO** con un JSON valido (nessun markdown, nessun testo fuori dal JSON):
+{
+  "executiveSummary": "2–4 frasi in italiano che sintetizzano l'approccio consigliato per questo vertical su WhatsApp",
+  "strategies": [
+    {
+      "title": "titolo breve e azionabile",
+      "objective": "obiettivo misurabile in una frase",
+      "tactics": ["tattica 1", "tattica 2", "tattica 3"],
+      "exampleTemplate": "Esempio di messaggio o outline di flusso WhatsApp (italiano, professionale, <= 900 caratteri; puoi usare \\n per a capo)",
+      "kpis": ["KPI 1", "KPI 2"],
+      "complianceNote": "Breve promemoria su opt-in, template Meta, frequenza, dati personali (GDPR) in italiano"
+    }
+  ]
+}`;
+
+  logger.info('Generating industry WhatsApp strategies', {
+    industry: params.industryLabel,
+    clientCount: params.clientCount,
+  });
+  const text = await generate(prompt, { temperature: 0.65, maxOutputTokens: 6144 });
+
+  try {
+    return parseJsonResponse<IndustryWaStrategiesResult>(text);
+  } catch {
+    logger.error('Failed to parse industry WA strategies', { text: text.substring(0, 300) });
+    return {
+      executiveSummary: 'Impossibile strutturare la risposta del modello. Ecco il testo grezzo da riutilizzare manualmente:',
+      strategies: [
+        {
+          title: 'Output non strutturato',
+          objective: 'Rileggi e adatta i contenuti al tuo vertical.',
+          tactics: ['Copia i punti utili dal testo sotto'],
+          exampleTemplate: text.slice(0, 3500),
+          kpis: [],
+          complianceNote:
+            'Verifica sempre opt-in, policy Meta WhatsApp e privacy prima di inviare campagne.',
+        },
+      ],
     };
   }
 }

@@ -3,6 +3,7 @@
  */
 
 import type { Client, ClientWithHealth, ClientGoal, ClientDeal, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload } from '@/types';
+import type { MarketFeedResult } from '@/lib/market/meta-feed';
 import { getFirebaseAuth } from '@/lib/firebase/client';
 import { useAuthStore } from '@/lib/store/auth';
 
@@ -334,6 +335,10 @@ export const onboardingHubApi = {
     fetchApi<ApiResponse<any>>('/onboarding-hub/pipeline', { token }),
 };
 
+export const marketApi = {
+  metaFeed: (token: string) => fetchApi<ApiResponse<MarketFeedResult>>('/market/meta-feed', { token }),
+};
+
 // ─── Workflows ────────────────────────────────────────────────────────────────
 export const workflowsApi = {
   list: (token: string) =>
@@ -372,6 +377,31 @@ export const aiApi = {
     fetchApi<ApiResponse<{ subject: string; body: string }>>('/ai/generate-email', {
       method: 'POST',
       body: JSON.stringify({ clientId, type, customInstructions }),
+      token,
+    }),
+  generateIndustryWaStrategies: (
+    token: string,
+    body: {
+      industryLabel: string;
+      clientCount?: number | null;
+      industryHubspotKey?: string | null;
+    }
+  ) =>
+    fetchApi<
+      ApiResponse<{
+        executiveSummary: string;
+        strategies: Array<{
+          title: string;
+          objective: string;
+          tactics: string[];
+          exampleTemplate: string;
+          kpis: string[];
+          complianceNote: string;
+        }>;
+      }>
+    >('/ai/generate-industry-wa-strategies', {
+      method: 'POST',
+      body: JSON.stringify(body),
       token,
     }),
 };

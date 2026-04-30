@@ -8,6 +8,12 @@ const nextConfig: NextConfig = {
     return [
       { source: "/team-reports", destination: "/admin/team-reports", permanent: true },
       { source: "/training-reports", destination: "/admin/training-reports", permanent: true },
+      { source: "/industries/clients", destination: "/industries", permanent: true },
+      { source: "/industries/clients/:path*", destination: "/industries", permanent: true },
+      { source: "/industries/library", destination: "/industries", permanent: true },
+      { source: "/industries/library/:path*", destination: "/industries", permanent: true },
+      { source: "/industries/qbr", destination: "/industries", permanent: true },
+      { source: "/industries/qbr/:path*", destination: "/industries", permanent: true },
     ];
   },
 };
