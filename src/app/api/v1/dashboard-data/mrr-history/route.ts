@@ -3,7 +3,7 @@ import { withAuth, createSuccessResponse, createErrorResponse } from '@/lib/api/
 import { fetchTable, runNativeQuery } from '@/lib/services/metabase';
 import { isConfigured } from '@/lib/config';
 
-const MRR_TABLE_ID = 40; // finance-mart-prd-data-platform-db.mrr_monthly_internal_v
+const MRR_TABLE_ID = 225; // finance_mart.mrr_monthly_internal_v (Metabase table id, refreshed dopo rename schema)
 
 function toNum(v: unknown): number {
   const n = parseFloat(String(v));
@@ -32,7 +32,7 @@ SELECT
   SUM(CASE WHEN payment_type = 'Credit' THEN amount_without_vat ELSE 0 END) AS credit_revenue,
   SUM(CASE WHEN payment_type IN ('Exceeded Conversations', 'Additional Conversations Package')
       THEN amount_without_vat ELSE 0 END) AS exceeded_revenue
-FROM "gold-prd-data-platform-db".payment_lines_current
+FROM gold_data.payment_lines_current
 WHERE payment_date >= DATE_ADD('month', -24, CURRENT_DATE)
   AND is_refund = false
 GROUP BY 1

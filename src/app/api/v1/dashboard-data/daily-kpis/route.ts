@@ -10,14 +10,14 @@ WITH cur AS (
 ),
 current_month AS (
   SELECT account_id, mrr_amount
-  FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal_v, cur
+  FROM finance_mart.mrr_monthly_internal_v, cur
   WHERE month = cur.cm AND mrr_amount > 0
     AND payment_type NOT IN ('Additional Package Onboarding','Agency Panel Activation',
                              'Exceeded Conversations','Other','Credit')
 ),
 prev_only AS (
   SELECT p.account_id, p.mrr_amount
-  FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal_v p CROSS JOIN cur
+  FROM finance_mart.mrr_monthly_internal_v p CROSS JOIN cur
   WHERE p.month = cur.pm AND p.mrr_amount > 0
     AND p.payment_type NOT IN ('Additional Package Onboarding','Agency Panel Activation',
                                'Exceeded Conversations','Other','Credit')
@@ -35,7 +35,7 @@ FROM (
 
 const Q_CREDIT_30D = `
 SELECT ROUND(SUM(amount_without_vat), 2) AS total_credit
-FROM "gold-prd-data-platform-db".payment_lines_current
+FROM gold_data.payment_lines_current
 WHERE payment_type = 'Credit'
   AND payment_date >= CURRENT_DATE - INTERVAL '30' DAY
 `;
@@ -44,7 +44,7 @@ const Q_MONTHLY_REVENUE = `
 SELECT
   DATE_FORMAT(p.payment_date, '%Y-%m') AS month,
   COALESCE(SUM(p.amount_without_vat), 0) AS total
-FROM "gold-prd-data-platform-db".payment_lines_current p
+FROM gold_data.payment_lines_current p
 WHERE p.payment_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1' MONTH)
   AND p.is_refund = false
 GROUP BY 1
@@ -55,7 +55,7 @@ const Q_DAILY_REVENUE = `
 SELECT
   DATE_FORMAT(payment_date, '%Y-%m-%d') AS day,
   COALESCE(SUM(amount_without_vat), 0) AS total
-FROM "gold-prd-data-platform-db".payment_lines_current
+FROM gold_data.payment_lines_current
 WHERE payment_date >= CURRENT_DATE - INTERVAL '2' DAY
   AND is_refund = false
 GROUP BY 1
@@ -64,7 +64,7 @@ ORDER BY 1
 
 const Q_YTD_REVENUE = `
 SELECT COALESCE(SUM(p.amount_without_vat), 0) AS total
-FROM "gold-prd-data-platform-db".payment_lines_current p
+FROM gold_data.payment_lines_current p
 WHERE p.payment_date >= DATE_TRUNC('year', CURRENT_DATE)
   AND p.payment_date < CURRENT_DATE
   AND p.is_refund = false
@@ -72,7 +72,7 @@ WHERE p.payment_date >= DATE_TRUNC('year', CURRENT_DATE)
 
 const Q_YTD_REVENUE_LAST_YEAR = `
 SELECT COALESCE(SUM(p.amount_without_vat), 0) AS total
-FROM "gold-prd-data-platform-db".payment_lines_current p
+FROM gold_data.payment_lines_current p
 WHERE p.payment_date >= DATE_TRUNC('year', CURRENT_DATE - INTERVAL '1' YEAR)
   AND p.payment_date < CURRENT_DATE - INTERVAL '1' YEAR
   AND p.is_refund = false
@@ -83,7 +83,7 @@ SELECT
   DATE_FORMAT(p.first_payment_date, '%Y-%m') AS period,
   COUNT(DISTINCT p.account_id) AS new_count,
   COALESCE(SUM(p.amount_without_vat), 0) AS new_revenue
-FROM "gold-prd-data-platform-db".payment_lines_current p
+FROM gold_data.payment_lines_current p
 WHERE p.first_payment_date >= DATE_TRUNC('month', DATE_ADD('month', -1, CURRENT_DATE))
   AND p.first_payment_date < DATE_ADD('month', 1, DATE_TRUNC('month', CURRENT_DATE))
   AND p.is_refund = false
@@ -94,7 +94,7 @@ ORDER BY 1
 const Q_NEW_ARR_YESTERDAY = `
 SELECT COUNT(DISTINCT p.account_id) AS new_count,
        COALESCE(SUM(p.amount_without_vat), 0) AS new_revenue
-FROM "gold-prd-data-platform-db".payment_lines_current p
+FROM gold_data.payment_lines_current p
 WHERE p.first_payment_date >= CURRENT_DATE - INTERVAL '1' DAY
   AND p.first_payment_date < CURRENT_DATE
   AND p.is_refund = false
@@ -103,7 +103,7 @@ WHERE p.first_payment_date >= CURRENT_DATE - INTERVAL '1' DAY
 const Q_NEW_ARR_TODAY = `
 SELECT COUNT(DISTINCT p.account_id) AS new_count,
        COALESCE(SUM(p.amount_without_vat), 0) AS new_revenue
-FROM "gold-prd-data-platform-db".payment_lines_current p
+FROM gold_data.payment_lines_current p
 WHERE p.first_payment_date >= CURRENT_DATE
   AND p.first_payment_date < CURRENT_DATE + INTERVAL '1' DAY
   AND p.is_refund = false

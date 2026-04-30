@@ -11,7 +11,7 @@ function currentYearMonth(): string {
 const Q_PARETO_TREND = `
 WITH account_mrr AS (
   SELECT month, account_id, SUM(mrr_amount) AS mrr
-  FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal_v
+  FROM finance_mart.mrr_monthly_internal_v
   WHERE month >= '2025-01' AND month <= DATE_FORMAT(CURRENT_DATE, '%Y-%m')
     AND mrr_amount > 0
   GROUP BY month, account_id
@@ -42,7 +42,7 @@ WITH account_mrr AS (
     m.account_id, m.account_name,
     SUM(m.mrr_amount) AS mrr,
     MAX(m.plan_slug) AS plan_slug
-  FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal_v m
+  FROM finance_mart.mrr_monthly_internal_v m
   WHERE m.month = '${month}' AND m.mrr_amount > 0
   GROUP BY m.account_id, m.account_name
 ),
@@ -68,7 +68,7 @@ function buildDistributionQuery(month: string) {
   return `
 WITH account_mrr AS (
   SELECT account_id, SUM(mrr_amount) AS mrr
-  FROM "finance-mart-prd-data-platform-db".mrr_monthly_internal_v
+  FROM finance_mart.mrr_monthly_internal_v
   WHERE month = '${month}' AND mrr_amount > 0
   GROUP BY account_id
 )
