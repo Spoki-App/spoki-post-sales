@@ -1,4 +1,4 @@
-import { Pool, type PoolConfig, type QueryResult, type QueryResultRow } from 'pg';
+import { Pool, type PoolClient, type PoolConfig, type QueryResult, type QueryResultRow } from 'pg';
 import { config } from '@/lib/config';
 import { getLogger } from '@/lib/logger';
 
@@ -175,6 +175,38 @@ export async function pgQuery<T extends QueryResultRow = Record<string, unknown>
   }
 
   throw lastError;
+}
+
+export type TxQuery = <T extends QueryResultRow = Record<string, unknown>>(
+  text: string,
+  params?: unknown[]
+) => Promise<QueryResult<T>>;
+
+/**
+ * Esegue `fn` dentro una transazione su un client dedicato del pool.
+ * Garantisce BEGIN/COMMIT/ROLLBACK e rilascio del client.
+ * Usare per scritture multi-statement che devono essere atomiche
+ * (es. swap del dataset NAR corrente).
+ */
+export async function pgTransaction<T>(fn: (q: TxQuery) => Promise<T>): Promise<T> {
+  const p = await getPool();
+  const client: PoolClient = await p.connect();
+  const txQuery: TxQuery = (text, params) => client.query(text, params) as Promise<QueryResult<QueryResultRow>> as ReturnType<TxQuery>;
+  try {
+    await client.query('BEGIN');
+    const result = await fn(txQuery);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      logger.error('Rollback failed', { error: String(rollbackErr) });
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function checkPostgresConnection(): Promise<{ connected: boolean; version?: string; error?: string }> {
