@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { AiChatPanel } from '@/components/ui/AiChatPanel';
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
@@ -16,7 +17,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -29,6 +30,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>
+      <AiChatPanel />
     </div>
   );
 }

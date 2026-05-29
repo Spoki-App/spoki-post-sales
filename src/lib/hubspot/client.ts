@@ -1,6 +1,6 @@
 /**
  * HubSpot API client for Post-Sales data.
- * Reads companies, contacts, tickets, engagements.
+ * Reads companies, contacts, tickets, engagements, and can derive company MRR from associated deals.
  * Supports workflow listing and enrollment via v4 automation API.
  */
 
@@ -11,15 +11,78 @@ import {
   HUBSPOT_COMPANY_PROPS,
   HUBSPOT_CONTACT_PROPS,
   HUBSPOT_TICKET_PROPS,
+  HUBSPOT_DEAL_PROPS,
+  HUBSPOT_DEAL_SYNC,
+  getHubspotCompanyPropertiesForApiRequest,
 } from '@/lib/config/hubspot-props';
 
 const logger = getLogger('hubspot:client');
+
+/** Properties requested for engagement batch/read and list (email subject/body, meeting notes, call notes). */
+const ENGAGEMENT_BATCH_PROPERTIES = [
+  'hs_engagement_type',
+  'hs_timestamp',
+  'hs_createdate',
+  'hubspot_owner_id',
+  'hs_engagement_source',
+  'hs_activity_type',
+  'hs_email_from_email',
+  'hs_email_from_firstname',
+  'hs_email_from_lastname',
+  'hs_email_to_email',
+  'hs_email_to_firstname',
+  'hs_email_to_lastname',
+  'hs_email_subject',
+  'hs_email_text',
+  'hs_call_direction',
+  'hs_call_disposition',
+  'hs_call_title',
+  'hs_call_to_number',
+  'hs_call_body',
+  'hs_meeting_title',
+  'hs_meeting_body',
+  'hs_meeting_start_time',
+  'hs_meeting_end_time',
+  'hs_meeting_outcome',
+  'hs_internal_meeting_notes',
+  'hs_task_subject',
+  'hs_task_status',
+  'hs_task_priority',
+  'hs_task_type',
+  'hs_note_body',
+  'hs_body_preview',
+] as const;
+
+function hubspotErrMeta(err: unknown): { status?: number; body?: string; message: string } {
+  const r = err as { response?: { status?: number; data?: unknown }; message?: string };
+  const status = r.response?.status;
+  const data = r.response?.data;
+  const body = data != null ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined;
+  return { status, body, message: r.message ?? String(err) };
+}
+
+/** Company MRR is filled from deals when HubSpot value is missing, invalid, or not positive. */
+export function companyNeedsDealMrrEnrichment(c: HSCompany): boolean {
+  if (c.mrr == null) return true;
+  if (!Number.isFinite(c.mrr)) return true;
+  return c.mrr <= 0;
+}
+
+export interface MrrEnrichmentStats {
+  companiesNeedingMrr: number;
+  companiesWithDealLinks: number;
+  dealsFetched: number;
+  companiesEnriched: number;
+  associationErrors: number;
+  dealBatchErrors: number;
+}
 
 export interface HSCompany {
   id: string;
   name: string | null;
   domain: string | null;
   industry: string | null;
+  industrySpoki: string | null;
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -67,6 +130,7 @@ export interface HSTicket {
   openedAt: string | null;
   closedAt: string | null;
   lastModifiedAt: string | null;
+  activatedAt: string | null;
   rawProperties: Record<string, unknown>;
 }
 
@@ -80,6 +144,44 @@ export interface HSEngagement {
   title: string | null;
   rawProperties: Record<string, unknown>;
 }
+
+export interface HSDeal {
+  id: string;
+  companyHubspotId: string;
+  pipelineId: string;
+  stageId: string;
+  dealName: string | null;
+  amount: number | null;
+  closeDate: string | null;
+  ownerId: string | null;
+  stageEnteredAt: string | null;
+}
+
+export interface HSOwnerTeam {
+  id: string;
+  name: string;
+  primary: boolean;
+}
+
+export interface HSOwner {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  teams: HSOwnerTeam[];
+}
+
+/** HubSpot picklist / multi-checkbox values may use `;` or `,` between labels. */
+function parseHubspotMultiSelectLabels(value: string | null | undefined): string[] {
+  if (value == null || value === '') return [];
+  return String(value)
+    .split(/[;,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/** HubSpot-defined: company → primary contact (associations v4). */
+const HUBSPOT_ASSOCIATION_COMPANY_TO_PRIMARY_CONTACT_TYPE_ID = 2;
 
 class HubSpotClient {
   private http: AxiosInstance;
@@ -114,6 +216,14 @@ class HubSpotClient {
         await new Promise(r => setTimeout(r, wait));
         return this.getWithRetry(url, params, options, attempt + 1);
       }
+      const meta = hubspotErrMeta(err);
+      logger.error('HubSpot request failed', {
+        url,
+        method: options?.method ?? 'GET',
+        status: meta.status,
+        body: meta.body?.slice(0, 800),
+        message: meta.message,
+      });
       throw err;
     }
   }
@@ -177,12 +287,17 @@ class HubSpotClient {
   }
 
   async getCompanies(): Promise<HSCompany[]> {
-    logger.info('Fetching companies from HubSpot (filtered by CS owner)');
-    const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
+    logger.info('Fetching companies from HubSpot (filtered by post-sales owners)');
+    const props = getHubspotCompanyPropertiesForApiRequest();
 
-    // Fetch companies where ANY of the three owner fields matches a known CS/Support team member
+    // Post-sales portfolio = companies owned by Customer Success, Customer Support, or Partner Success.
+    // The HubSpot Search API caps results at 10k per query; restricting to these teams keeps the
+    // result set well below that limit (~4.8k) and avoids the 400 that occurs when paginating past 10k.
     const { HUBSPOT_OWNERS } = await import('@/lib/config/owners');
-    const ownerIds = Object.keys(HUBSPOT_OWNERS);
+    const POST_SALES_TEAMS = new Set(['Customer Success', 'Customer Support', 'Partner Success']);
+    const ownerIds = Object.values(HUBSPOT_OWNERS)
+      .filter(o => POST_SALES_TEAMS.has(o.team))
+      .map(o => o.id);
 
     const results: HSCompany[] = [];
     let after: string | undefined;
@@ -199,7 +314,7 @@ class HubSpotClient {
         method: 'POST',
         data: {
           filterGroups,
-          properties: props.split(','),
+          properties: props,
           limit: 100,
           ...(after ? { after } : {}),
         }
@@ -216,6 +331,7 @@ class HubSpotClient {
           name: p[HUBSPOT_COMPANY_PROPS.name] ?? null,
           domain: p[HUBSPOT_COMPANY_PROPS.domain] ?? null,
           industry: p[HUBSPOT_COMPANY_PROPS.industry] ?? null,
+          industrySpoki: p[HUBSPOT_COMPANY_PROPS.industrySpoki] ?? null,
           city: p[HUBSPOT_COMPANY_PROPS.city] ?? null,
           country: p[HUBSPOT_COMPANY_PROPS.country] ?? null,
           phone: p[HUBSPOT_COMPANY_PROPS.phone] ?? null,
@@ -252,16 +368,17 @@ class HubSpotClient {
 
   async getCompaniesLegacy(): Promise<HSCompany[]> {
     logger.info('Fetching all companies from HubSpot (no filter)');
-    const props = Object.values(HUBSPOT_COMPANY_PROPS).join(',');
+    const props = getHubspotCompanyPropertiesForApiRequest();
 
     return this.fetchAllPages(
       '/crm/v3/objects/companies',
-      { limit: 100, properties: props },
+      { limit: 100, properties: props.join(',') },
       ({ id, properties: p }) => ({
         id,
         name: p[HUBSPOT_COMPANY_PROPS.name] ?? null,
         domain: p[HUBSPOT_COMPANY_PROPS.domain] ?? null,
         industry: p[HUBSPOT_COMPANY_PROPS.industry] ?? null,
+        industrySpoki: p[HUBSPOT_COMPANY_PROPS.industrySpoki] ?? null,
         city: p[HUBSPOT_COMPANY_PROPS.city] ?? null,
         country: p[HUBSPOT_COMPANY_PROPS.country] ?? null,
         phone: p[HUBSPOT_COMPANY_PROPS.phone] ?? null,
@@ -300,7 +417,7 @@ class HubSpotClient {
       'companies',
       ({ id, properties: p }, companyIds) => ({
         id,
-        companyId: companyIds[0] ?? null,
+        companyId: p[HUBSPOT_CONTACT_PROPS.associatedCompanyId] ?? companyIds[0] ?? null,
         email: p[HUBSPOT_CONTACT_PROPS.email] ?? null,
         firstName: p[HUBSPOT_CONTACT_PROPS.firstName] ?? null,
         lastName: p[HUBSPOT_CONTACT_PROPS.lastName] ?? null,
@@ -309,13 +426,103 @@ class HubSpotClient {
         lifecycleStage: p[HUBSPOT_CONTACT_PROPS.lifecycleStage] ?? null,
         ownerId: p[HUBSPOT_CONTACT_PROPS.ownerId] ?? null,
         lastActivityDate: p[HUBSPOT_CONTACT_PROPS.lastActivityDate] ?? null,
-        communicationRoles: p[HUBSPOT_CONTACT_PROPS.communicationRole]
-          ? p[HUBSPOT_CONTACT_PROPS.communicationRole]!.split(';').map(r => r.trim()).filter(Boolean)
-          : [],
+        communicationRoles: parseHubspotMultiSelectLabels(p[HUBSPOT_CONTACT_PROPS.communicationRole]),
         createDate: p[HUBSPOT_CONTACT_PROPS.createDate] ?? null,
         rawProperties: p as Record<string, unknown>,
       })
     );
+  }
+
+  private async readCompaniesToContactsAssociationsBatch(
+    companyHubspotIds: string[]
+  ): Promise<{
+    contactToCompany: Record<string, string>;
+    companyToPrimaryContact: Record<string, string>;
+    edges: Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }>;
+  }> {
+    const contactToCompany: Record<string, string> = {};
+    const companyToPrimaryContact: Record<string, string> = {};
+    const edges: Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }> = [];
+    if (companyHubspotIds.length === 0) return { contactToCompany, companyToPrimaryContact, edges };
+
+    const res = await this.getWithRetry('/crm/v4/associations/companies/contacts/batch/read', {}, {
+      method: 'POST',
+      data: { inputs: companyHubspotIds.map(id => ({ id })) },
+    });
+    const data = res.data as {
+      results: Array<{
+        from: { id: string };
+        to: Array<{
+          toObjectId: string | number;
+          associationTypes?: Array<{ category: string; typeId: number; label: string | null }>;
+        }>;
+      }>;
+    };
+
+    for (const item of data.results ?? []) {
+      const companyId = String(item.from.id);
+      for (const assoc of item.to ?? []) {
+        const contactId = String(assoc.toObjectId);
+        if (!contactToCompany[contactId]) {
+          contactToCompany[contactId] = companyId;
+        }
+        const types = assoc.associationTypes ?? [];
+        const isPrimary = types.some(
+          t =>
+            t.category === 'HUBSPOT_DEFINED' &&
+            (t.typeId === HUBSPOT_ASSOCIATION_COMPANY_TO_PRIMARY_CONTACT_TYPE_ID || t.label === 'Primary')
+        );
+        if (isPrimary && !companyToPrimaryContact[companyId]) {
+          companyToPrimaryContact[companyId] = contactId;
+        }
+        const labels = types
+          .map(t => (t.label ?? '').trim())
+          .filter(l => l.length > 0);
+        edges.push({ companyHubspotId: companyId, contactHubspotId: contactId, isPrimary, labels });
+      }
+    }
+    return { contactToCompany, companyToPrimaryContact, edges };
+  }
+
+  /**
+   * All company↔contact association edges for the given companies.
+   * Used by sync to populate `client_contacts` (many-to-many).
+   */
+  async getCompanyContactAssociations(
+    companyHubspotIds: string[]
+  ): Promise<Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }>> {
+    const out: Array<{ companyHubspotId: string; contactHubspotId: string; isPrimary: boolean; labels: string[] }> = [];
+    if (companyHubspotIds.length === 0) return out;
+    const BATCH = 100;
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const { edges } = await this.readCompaniesToContactsAssociationsBatch(slice);
+        out.push(...edges);
+      } catch (err) {
+        logger.warn(`Company↔contact associations failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Native CRM primary contact per company (association typeId 2), for sync into `clients.raw_properties`.
+   */
+  async getCompanyPrimaryContactHubspotIds(companyHubspotIds: string[]): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    if (companyHubspotIds.length === 0) return out;
+    const BATCH = 100;
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const { companyToPrimaryContact } = await this.readCompaniesToContactsAssociationsBatch(slice);
+        Object.assign(out, companyToPrimaryContact);
+      } catch (err) {
+        logger.warn(`Primary contact associations failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+    return out;
   }
 
   /**
@@ -335,17 +542,10 @@ class HubSpotClient {
     for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
       const slice = companyHubspotIds.slice(i, i + BATCH);
       try {
-        const res = await this.getWithRetry('/crm/v4/associations/companies/contacts/batch/read', {}, {
-          method: 'POST',
-          data: { inputs: slice.map(id => ({ id })) },
-        });
-        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string }> }> };
-        for (const item of data.results ?? []) {
-          for (const assoc of item.to ?? []) {
-            // Keep first company found per contact
-            if (!contactToCompanyMap[assoc.toObjectId]) {
-              contactToCompanyMap[assoc.toObjectId] = item.from.id;
-            }
+        const { contactToCompany } = await this.readCompaniesToContactsAssociationsBatch(slice);
+        for (const [contactId, companyId] of Object.entries(contactToCompany)) {
+          if (!contactToCompanyMap[contactId]) {
+            contactToCompanyMap[contactId] = companyId;
           }
         }
       } catch (err) {
@@ -375,7 +575,7 @@ class HubSpotClient {
           const p = item.properties;
           results.push({
             id: item.id,
-            companyId: contactToCompanyMap[item.id] ?? null,
+            companyId: p[HUBSPOT_CONTACT_PROPS.associatedCompanyId] ?? contactToCompanyMap[item.id] ?? null,
             email: p[HUBSPOT_CONTACT_PROPS.email] ?? null,
             firstName: p[HUBSPOT_CONTACT_PROPS.firstName] ?? null,
             lastName: p[HUBSPOT_CONTACT_PROPS.lastName] ?? null,
@@ -384,9 +584,7 @@ class HubSpotClient {
             lifecycleStage: p[HUBSPOT_CONTACT_PROPS.lifecycleStage] ?? null,
             ownerId: p[HUBSPOT_CONTACT_PROPS.ownerId] ?? null,
             lastActivityDate: p[HUBSPOT_CONTACT_PROPS.lastActivityDate] ?? null,
-            communicationRoles: p[HUBSPOT_CONTACT_PROPS.communicationRole]
-              ? p[HUBSPOT_CONTACT_PROPS.communicationRole]!.split(';').map(r => r.trim()).filter(Boolean)
-              : [],
+            communicationRoles: parseHubspotMultiSelectLabels(p[HUBSPOT_CONTACT_PROPS.communicationRole]),
             createDate: p[HUBSPOT_CONTACT_PROPS.createDate] ?? null,
             rawProperties: p as Record<string, unknown>,
           });
@@ -420,6 +618,7 @@ class HubSpotClient {
         openedAt: p[HUBSPOT_TICKET_PROPS.createDate] ?? null,
         closedAt: p[HUBSPOT_TICKET_PROPS.closeDate] ?? null,
         lastModifiedAt: p[HUBSPOT_TICKET_PROPS.lastModifiedDate] ?? null,
+        activatedAt: p[HUBSPOT_TICKET_PROPS.activatedAt] ?? null,
         rawProperties: p as Record<string, unknown>,
       })
     );
@@ -472,7 +671,7 @@ class HubSpotClient {
           method: 'POST',
           data: {
             inputs: slice.map(id => ({ id })),
-            properties: ['hs_engagement_type', 'hs_timestamp', 'hubspot_owner_id', 'hs_engagement_source'],
+            properties: [...ENGAGEMENT_BATCH_PROPERTIES],
           },
         });
         const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
@@ -500,6 +699,75 @@ class HubSpotClient {
     return results;
   }
 
+  async getEngagementsForContacts(contactHubspotIds: string[]): Promise<HSEngagement[]> {
+    if (contactHubspotIds.length === 0) return [];
+    logger.info(`Fetching engagements for ${contactHubspotIds.length} contacts via associations API`);
+
+    const BATCH = 100;
+    const engagementToContactMap: Record<string, string> = {};
+
+    for (let i = 0; i < contactHubspotIds.length; i += BATCH) {
+      const slice = contactHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/contacts/engagements/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string | number }> }> };
+        for (const item of data.results ?? []) {
+          for (const assoc of item.to ?? []) {
+            const eid = String(assoc.toObjectId);
+            if (!engagementToContactMap[eid]) {
+              engagementToContactMap[eid] = item.from.id;
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn(`Contact engagement associations batch failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+
+    const engagementIds = Object.keys(engagementToContactMap);
+    if (engagementIds.length === 0) return [];
+    logger.info(`Found ${engagementIds.length} unique engagements for contacts`);
+
+    const results: HSEngagement[] = [];
+
+    for (let i = 0; i < engagementIds.length; i += BATCH) {
+      const slice = engagementIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/engagements/batch/read', {}, {
+          method: 'POST',
+          data: {
+            inputs: slice.map(id => ({ id })),
+            properties: [...ENGAGEMENT_BATCH_PROPERTIES],
+          },
+        });
+        const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
+        for (const item of data.results ?? []) {
+          const p = item.properties;
+          const occurredAt = p['hs_timestamp'];
+          if (!occurredAt) continue;
+          results.push({
+            id: item.id,
+            companyId: null,
+            contactId: engagementToContactMap[item.id] ?? null,
+            type: p['hs_engagement_type'] ?? 'UNKNOWN',
+            occurredAt,
+            ownerId: p['hubspot_owner_id'] ?? null,
+            title: p['hs_engagement_source'] ?? null,
+            rawProperties: p as Record<string, unknown>,
+          });
+        }
+      } catch (err) {
+        logger.warn(`Contact engagement batch/read failed for slice ${i}-${i + BATCH}`, { error: String(err) });
+      }
+    }
+
+    logger.info(`Fetched ${results.length} engagements for contacts`);
+    return results;
+  }
+
   async getEngagements(): Promise<HSEngagement[]> {
     logger.info('Fetching engagements from HubSpot');
 
@@ -510,7 +778,7 @@ class HubSpotClient {
       const response = await this.http.get('/crm/v3/objects/engagements', {
         params: {
           limit: 100,
-          properties: 'hs_engagement_type,hs_timestamp,hubspot_owner_id,hs_engagement_source',
+          properties: ENGAGEMENT_BATCH_PROPERTIES.join(','),
           associations: 'companies,contacts',
           ...(after ? { after } : {}),
         },
@@ -550,19 +818,38 @@ class HubSpotClient {
     return results;
   }
 
-  // HubSpot object type IDs: 0-1 = contacts, 0-2 = companies
   private static readonly OBJECT_TYPE_LABELS: Record<string, string> = {
     '0-1': 'contacts',
     '0-2': 'companies',
+    '0-5': 'tickets',
   };
+
+  private static parseWorkflowAllowlist(): Set<string> | null {
+    const raw = process.env.HUBSPOT_WORKFLOW_ALLOWLIST?.trim();
+    if (!raw) return null;
+    return new Set(raw.split(',').map(id => id.trim()).filter(Boolean));
+  }
 
   async getWorkflows(): Promise<Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt: string }>> {
     logger.info('Fetching workflows from HubSpot');
-    const response = await this.getWithRetry('/automation/v4/flows', {});
-    const data = response.data as { flows?: Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string }> };
-    const flows = data.flows ?? (Array.isArray(response.data) ? response.data as Array<{ id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string }> : []);
 
-    return flows.map(f => ({
+    type HSFlow = { id: string; name: string; isEnabled: boolean; objectTypeId: string; type: string; updatedAt?: string };
+    const all: HSFlow[] = [];
+    let after: string | undefined;
+
+    do {
+      const response = await this.getWithRetry('/automation/v4/flows', after ? { after } : {});
+      const data = response.data as { results?: HSFlow[]; paging?: { next?: { after: string } } };
+      if (data.results) all.push(...data.results);
+      after = data.paging?.next?.after;
+    } while (after);
+
+    const allowlist = HubSpotClient.parseWorkflowAllowlist();
+    const filtered = allowlist ? all.filter(f => allowlist.has(f.id)) : all;
+
+    logger.info(`Fetched ${all.length} workflows from HubSpot, returning ${filtered.length}${allowlist ? ` (allowlist: ${allowlist.size} IDs)` : ''}`);
+
+    return filtered.map(f => ({
       id: f.id,
       name: f.name ?? `Workflow ${f.id}`,
       isEnabled: f.isEnabled,
@@ -572,27 +859,495 @@ class HubSpotClient {
     }));
   }
 
+  private static readonly OBJECT_TYPE_IDS: Record<string, string> = {
+    contacts: '0-1',
+    companies: '0-2',
+    tickets: '0-5',
+  };
+
+  /**
+   * Maps a v4 flowId to the legacy v2 workflowId via the migration endpoint.
+   * Required because the v2 enrollment endpoint only accepts v2 IDs.
+   */
+  private async mapFlowIdToWorkflowId(flowId: string): Promise<string> {
+    const res = await this.http.post('/automation/v4/workflow-id-mappings/batch/read', {
+      inputs: [{ flowMigrationStatuses: flowId, type: 'FLOW_ID' }],
+    });
+    const data = res.data as { results?: Array<{ flowId: number; workflowId: number }> };
+    const mapped = data.results?.[0]?.workflowId;
+    if (!mapped) throw new Error(`Could not map v4 flowId ${flowId} to v2 workflowId`);
+    return String(mapped);
+  }
+
   async enrollInWorkflow(
     workflowId: string,
     objectId: string,
-    objectType: 'contacts' | 'companies'
+    objectType: 'contacts' | 'companies' | 'tickets',
+    contactEmail?: string
   ): Promise<void> {
     logger.info(`Enrolling ${objectType} ${objectId} in workflow ${workflowId}`);
 
     if (objectType === 'contacts') {
+      if (!contactEmail) throw new Error('contactEmail is required for contact enrollment');
+      const v2Id = await this.mapFlowIdToWorkflowId(workflowId);
+      logger.info(`Mapped v4 flowId ${workflowId} -> v2 workflowId ${v2Id}`);
       await this.http.post(
-        `/automation/v2/workflows/${workflowId}/enrollments/contacts/${objectId}`,
+        `/automation/v2/workflows/${v2Id}/enrollments/contacts/${encodeURIComponent(contactEmail)}`,
       );
     } else {
-      // v4 enrollment not publicly documented for non-contacts;
-      // fall back to v2 if available, otherwise try v4
       await this.http.post(
         `/automation/v4/flows/${workflowId}/enrollments`,
-        { objectId, objectType: objectType === 'companies' ? '0-2' : '0-1' },
+        { objectId, objectType: HubSpotClient.OBJECT_TYPE_IDS[objectType] },
       );
     }
 
     logger.info(`Successfully enrolled ${objectType} ${objectId} in workflow ${workflowId}`);
+  }
+
+  private async fetchDealIdsForCompany(companyId: string): Promise<string[]> {
+    const res = await this.getWithRetry(`/crm/v4/objects/companies/${companyId}/associations/deals`, {});
+    const data = res.data as { results?: Array<{ toObjectId: string | number }> };
+    return (data.results ?? []).map(r => String(r.toObjectId));
+  }
+
+  /**
+   * Fills `mrr` on companies where HubSpot company MRR is missing or not positive, using associated deals
+   * (closed-won by default). Private app: scope `crm.objects.deals.read` (e lettura associazioni).
+   */
+  async enrichCompaniesMrrFromDeals(companies: HSCompany[]): Promise<MrrEnrichmentStats> {
+    const emptyStats = (): MrrEnrichmentStats => ({
+      companiesNeedingMrr: 0,
+      companiesWithDealLinks: 0,
+      dealsFetched: 0,
+      companiesEnriched: 0,
+      associationErrors: 0,
+      dealBatchErrors: 0,
+    });
+
+    const targets = companies.filter(companyNeedsDealMrrEnrichment);
+    const stats = emptyStats();
+    stats.companiesNeedingMrr = targets.length;
+    if (targets.length === 0) return stats;
+
+    const dealPropList = [
+      HUBSPOT_DEAL_PROPS.mrr,
+      HUBSPOT_DEAL_PROPS.amount,
+      HUBSPOT_DEAL_PROPS.closedWon,
+      HUBSPOT_DEAL_PROPS.dealstage,
+    ];
+    const dealProps = dealPropList.join(',');
+
+    const companyToDealIds = new Map<string, string[]>();
+    const ASSOC_BATCH = 100;
+
+    for (let i = 0; i < targets.length; i += ASSOC_BATCH) {
+      const slice = targets.slice(i, i + ASSOC_BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(c => ({ id: c.id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ from?: { id?: string }; to?: Array<{ toObjectId: string | number }> }>;
+        };
+        for (const row of results ?? []) {
+          const cid = row.from?.id;
+          if (!cid) continue;
+          const ids = (row.to ?? []).map(t => String(t.toObjectId));
+          const prev = companyToDealIds.get(cid) ?? [];
+          companyToDealIds.set(cid, [...new Set([...prev, ...ids])]);
+        }
+      } catch (e) {
+        const { status, body, message } = hubspotErrMeta(e);
+        stats.associationErrors++;
+        logger.warn('HubSpot company→deal associations batch failed; falling back to per-company reads', {
+          status,
+          body,
+          message,
+        });
+        for (const c of slice) {
+          try {
+            const ids = await this.fetchDealIdsForCompany(c.id);
+            if (ids.length === 0) continue;
+            const prev = companyToDealIds.get(c.id) ?? [];
+            companyToDealIds.set(c.id, [...new Set([...prev, ...ids])]);
+          } catch (e2) {
+            const m = hubspotErrMeta(e2);
+            logger.warn('HubSpot company→deal association GET failed', { companyId: c.id, status: m.status, message: m.message });
+          }
+        }
+      }
+    }
+
+    for (const c of targets) {
+      if ((companyToDealIds.get(c.id) ?? []).length > 0) stats.companiesWithDealLinks++;
+    }
+
+    const allDealIds = [...new Set([...companyToDealIds.values()].flat())];
+    if (allDealIds.length === 0) {
+      logger.info('No associated deals found for companies needing MRR from deals');
+      return stats;
+    }
+
+    const dealPropsById = new Map<string, Record<string, string | null>>();
+    const DEAL_BATCH = 100;
+
+    for (let i = 0; i < allDealIds.length; i += DEAL_BATCH) {
+      const batch = allDealIds.slice(i, i + DEAL_BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: { properties: dealPropList, inputs: batch.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ id: string; properties: Record<string, string | null> }>;
+        };
+        for (const r of results ?? []) {
+          dealPropsById.set(r.id, r.properties);
+        }
+      } catch (e) {
+        stats.dealBatchErrors++;
+        const { status, body, message } = hubspotErrMeta(e);
+        logger.warn('HubSpot deals batch/read failed during MRR enrichment', { status, body, message });
+      }
+    }
+
+    stats.dealsFetched = dealPropsById.size;
+
+    const wonStages = HUBSPOT_DEAL_SYNC.wonDealStageIds;
+
+    const closedWon = (p: Record<string, string | null>): boolean => {
+      if (!HUBSPOT_DEAL_SYNC.onlyClosedWonDeals) return true;
+      if (p[HUBSPOT_DEAL_PROPS.closedWon] === 'true') return true;
+      if (wonStages.length > 0) {
+        const st = p[HUBSPOT_DEAL_PROPS.dealstage];
+        return st != null && wonStages.includes(st);
+      }
+      return false;
+    };
+
+    const monthlyFromDeal = (p: Record<string, string | null>): number => {
+      const mrrStr = p[HUBSPOT_DEAL_PROPS.mrr];
+      const mrr = mrrStr != null && mrrStr !== '' ? parseFloat(mrrStr) : NaN;
+      if (Number.isFinite(mrr) && mrr > 0) return mrr;
+      if (HUBSPOT_DEAL_SYNC.fallbackAnnualAmountToMonthly) {
+        const amtStr = p[HUBSPOT_DEAL_PROPS.amount];
+        const amt = amtStr != null && amtStr !== '' ? parseFloat(amtStr) : NaN;
+        if (Number.isFinite(amt) && amt > 0) return amt / 12;
+      }
+      return 0;
+    };
+
+    for (const c of targets) {
+      const dealIds = companyToDealIds.get(c.id);
+      if (!dealIds?.length) continue;
+      let sum = 0;
+      const seen = new Set<string>();
+      for (const did of dealIds) {
+        if (seen.has(did)) continue;
+        seen.add(did);
+        const p = dealPropsById.get(did);
+        if (!p || !closedWon(p)) continue;
+        sum += monthlyFromDeal(p);
+      }
+      if (sum > 0) {
+        c.mrr = Math.round(sum * 100) / 100;
+        stats.companiesEnriched++;
+      }
+    }
+
+    if (stats.companiesEnriched > 0) {
+      logger.info(
+        `Enriched MRR from deals for companies with missing or non-positive HubSpot MRR: ${JSON.stringify(stats)}`
+      );
+    }
+
+    return stats;
+  }
+
+  private static readonly PURCHASE_SOURCE_LABELS: Record<string, string> = {
+    product_led: 'Product Led',
+    Inbound: 'Sales Led',
+    Outbound: 'Sales Led',
+    'Customer Led': 'Customer Led',
+    partner: 'Partner Led',
+  };
+
+  async getPurchaseSourcesForCompanies(companyHubspotIds: string[]): Promise<Record<string, string>> {
+    if (companyHubspotIds.length === 0) return {};
+    logger.info(`Fetching purchase sources for ${companyHubspotIds.length} companies`);
+
+    const BATCH = 100;
+    const companyToDealIds: Record<string, string[]> = {};
+
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const data = res.data as { results: Array<{ from: { id: string }; to: Array<{ toObjectId: string | number }> }> };
+        for (const item of data.results ?? []) {
+          const dealIds = (item.to ?? []).map(a => String(a.toObjectId));
+          if (dealIds.length > 0) companyToDealIds[item.from.id] = dealIds;
+        }
+      } catch (err) {
+        logger.warn(`Deal associations batch failed for slice ${i}`, { error: String(err) });
+      }
+    }
+
+    const allDealIds = [...new Set(Object.values(companyToDealIds).flat())];
+    if (allDealIds.length === 0) return {};
+    logger.info(`Found ${allDealIds.length} deals associated with companies, fetching details`);
+
+    const dealData: Record<string, { source: string | null; pipeline: string | null; stage: string | null; closedate: string | null }> = {};
+
+    for (let i = 0; i < allDealIds.length; i += BATCH) {
+      const slice = allDealIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: {
+            inputs: slice.map(id => ({ id })),
+            properties: ['spoki_purchase_source', 'pipeline', 'dealstage', 'closedate'],
+          },
+        });
+        const data = res.data as { results: Array<{ id: string; properties: Record<string, string | null> }> };
+        for (const deal of data.results ?? []) {
+          dealData[deal.id] = {
+            source: deal.properties.spoki_purchase_source,
+            pipeline: deal.properties.pipeline,
+            stage: deal.properties.dealstage,
+            closedate: deal.properties.closedate,
+          };
+        }
+      } catch (err) {
+        logger.warn(`Deal batch/read failed for slice ${i}`, { error: String(err) });
+      }
+    }
+
+    const result: Record<string, string> = {};
+    for (const [companyId, dealIds] of Object.entries(companyToDealIds)) {
+      const closedWonDeals = dealIds
+        .map(id => ({ id, ...dealData[id] }))
+        .filter(d => d.pipeline === '671838099' && d.stage === '986053469' && d.source)
+        .sort((a, b) => (a.closedate ?? '').localeCompare(b.closedate ?? ''));
+
+      const firstDeal = closedWonDeals[0];
+      if (firstDeal?.source) {
+        result[companyId] = HubSpotClient.PURCHASE_SOURCE_LABELS[firstDeal.source] ?? firstDeal.source;
+      }
+    }
+
+    logger.info(`Found purchase sources for ${Object.keys(result).length} companies`);
+    return result;
+  }
+
+  async fetchDealsForCompanies(companyHubspotIds: string[]): Promise<HSDeal[]> {
+    if (companyHubspotIds.length === 0) return [];
+
+    const { TRACKED_PIPELINE_IDS, DEAL_PIPELINES } = await import('@/lib/config/deal-pipelines');
+
+    const BATCH = 100;
+    const companyToDealIds = new Map<string, string[]>();
+
+    for (let i = 0; i < companyHubspotIds.length; i += BATCH) {
+      const slice = companyHubspotIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v4/associations/companies/deals/batch/read', {}, {
+          method: 'POST',
+          data: { inputs: slice.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ from?: { id?: string }; to?: Array<{ toObjectId: string | number }> }>;
+        };
+        for (const row of results ?? []) {
+          const cid = row.from?.id;
+          if (!cid) continue;
+          const ids = (row.to ?? []).map(t => String(t.toObjectId));
+          if (ids.length > 0) {
+            const prev = companyToDealIds.get(cid) ?? [];
+            companyToDealIds.set(cid, [...new Set([...prev, ...ids])]);
+          }
+        }
+      } catch (err) {
+        const { message } = hubspotErrMeta(err);
+        logger.warn('Deal associations batch failed', { message });
+      }
+    }
+
+    const allDealIds = [...new Set([...companyToDealIds.values()].flat())];
+    if (allDealIds.length === 0) return [];
+
+    logger.info(`Fetching ${allDealIds.length} deals for pipeline sync`);
+
+    const dealProps = ['dealname', 'amount', 'pipeline', 'dealstage', 'closedate', 'hubspot_owner_id'];
+
+    const allStageIds = TRACKED_PIPELINE_IDS.flatMap(pid =>
+      Object.keys(DEAL_PIPELINES[pid].stages)
+    );
+    const dateEnteredProps = allStageIds.map(sid => `hs_date_entered_${sid}`);
+    const propsToFetch = [...dealProps, ...dateEnteredProps];
+
+    const dealById = new Map<string, Record<string, string | null>>();
+
+    for (let i = 0; i < allDealIds.length; i += BATCH) {
+      const batch = allDealIds.slice(i, i + BATCH);
+      try {
+        const res = await this.getWithRetry('/crm/v3/objects/deals/batch/read', {}, {
+          method: 'POST',
+          data: { properties: propsToFetch, inputs: batch.map(id => ({ id })) },
+        });
+        const { results } = res.data as {
+          results: Array<{ id: string; properties: Record<string, string | null> }>;
+        };
+        for (const r of results ?? []) {
+          dealById.set(r.id, r.properties);
+        }
+      } catch (err) {
+        const { message } = hubspotErrMeta(err);
+        logger.warn('Deal batch/read failed', { message });
+      }
+    }
+
+    const dealIdToCompany = new Map<string, string>();
+    for (const [companyId, dids] of companyToDealIds) {
+      for (const did of dids) dealIdToCompany.set(did, companyId);
+    }
+
+    const results: HSDeal[] = [];
+    const trackedSet = new Set<string>(TRACKED_PIPELINE_IDS as unknown as string[]);
+
+    for (const [dealId, props] of dealById) {
+      const pipelineId = props.pipeline ?? '';
+      if (!trackedSet.has(pipelineId)) continue;
+
+      const stageId = props.dealstage ?? '';
+      const companyHubspotId = dealIdToCompany.get(dealId);
+      if (!companyHubspotId) continue;
+
+      const dateEnteredKey = `hs_date_entered_${stageId}`;
+      const stageEnteredAt = props[dateEnteredKey] ?? null;
+
+      const amtStr = props.amount;
+      const amount = amtStr ? parseFloat(amtStr) : null;
+
+      results.push({
+        id: dealId,
+        companyHubspotId,
+        pipelineId,
+        stageId,
+        dealName: props.dealname ?? null,
+        amount: amount && Number.isFinite(amount) ? Math.round(amount * 100) / 100 : null,
+        closeDate: props.closedate ?? null,
+        ownerId: props.hubspot_owner_id ?? null,
+        stageEnteredAt,
+      });
+    }
+
+    logger.info(`Found ${results.length} deals in tracked pipelines`);
+    return results;
+  }
+
+  async createNoteOnCompany(companyHubspotId: string, body: string): Promise<string> {
+    const noteRes = await this.http.post('/crm/v3/objects/notes', {
+      properties: { hs_note_body: body, hs_timestamp: new Date().toISOString() },
+    });
+    const noteId = (noteRes.data as { id: string }).id;
+
+    await this.http.put(
+      `/crm/v4/objects/notes/${noteId}/associations/companies/${companyHubspotId}`,
+      [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }]
+    );
+
+    return noteId;
+  }
+
+  /**
+   * Returns all active HubSpot owners with their team memberships.
+   * Uses `properties=teams` to include the embedded `teams` array (id, name, primary).
+   */
+  async getOwners(): Promise<HSOwner[]> {
+    logger.info('Fetching owners from HubSpot');
+
+    const results: HSOwner[] = [];
+    let after: string | undefined;
+
+    do {
+      const response = await this.getWithRetry('/crm/v3/owners', {
+        limit: 100,
+        archived: false,
+        properties: 'teams',
+        ...(after ? { after } : {}),
+      });
+
+      const { results: items, paging } = response.data as {
+        results: Array<{
+          id: string;
+          email?: string | null;
+          firstName?: string | null;
+          lastName?: string | null;
+          teams?: Array<{ id: string; name: string; primary?: boolean }>;
+        }>;
+        paging?: { next?: { after: string } };
+      };
+
+      for (const item of items) {
+        results.push({
+          id: item.id,
+          email: item.email ?? null,
+          firstName: item.firstName ?? null,
+          lastName: item.lastName ?? null,
+          teams: (item.teams ?? []).map(t => ({ id: t.id, name: t.name, primary: Boolean(t.primary) })),
+        });
+      }
+
+      after = paging?.next?.after;
+    } while (after);
+
+    logger.info(`Fetched ${results.length} owners from HubSpot`);
+    return results;
+  }
+
+  /**
+   * List all company properties defined in HubSpot.
+   * Used by the NAR module to discover the internal names of partner_id / partner_type properties
+   * before adding them to {@link HUBSPOT_COMPANY_PROPS}.
+   */
+  async getCompanyProperties(): Promise<Array<{
+    name: string;
+    label: string;
+    type: string;
+    fieldType: string;
+    groupName: string | null;
+    description: string | null;
+    options: Array<{ label: string; value: string }>;
+  }>> {
+    logger.info('Fetching company properties from HubSpot');
+    const res = await this.getWithRetry('/crm/v3/properties/companies', {});
+    const data = res.data as {
+      results?: Array<{
+        name: string;
+        label?: string;
+        type?: string;
+        fieldType?: string;
+        groupName?: string;
+        description?: string;
+        options?: Array<{ label?: string; value?: string }>;
+      }>;
+    };
+    return (data.results ?? []).map(p => ({
+      name: p.name,
+      label: p.label ?? p.name,
+      type: p.type ?? '',
+      fieldType: p.fieldType ?? '',
+      groupName: p.groupName ?? null,
+      description: p.description ?? null,
+      options: (p.options ?? [])
+        .filter(o => typeof o.label === 'string' && typeof o.value === 'string')
+        .map(o => ({ label: String(o.label), value: String(o.value) })),
+    }));
   }
 
   async healthCheck(): Promise<boolean> {

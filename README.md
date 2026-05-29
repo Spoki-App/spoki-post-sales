@@ -58,3 +58,16 @@ L'app sara disponibile su [http://localhost:3000](http://localhost:3000).
 ## Deploy
 
 Il progetto e' configurato per il deploy su [Vercel](https://vercel.com). Le variabili d'ambiente vanno configurate nel pannello Vercel del progetto.
+
+## Changelog
+
+### 2026-04-07
+
+- **Workflow enrollment**: dalla pagina dettaglio cliente e' possibile enrollare companies, contatti e ticket nei workflow HubSpot (via v4/v2 API)
+- **Colonna Onboarding**: mostra lo stage del ticket nella pipeline di onboarding, cliccabile per aprire il ticket su HubSpot
+- **Colonna Ticket Support**: mostra i ticket aperti nella pipeline Support con stage, cliccabile
+- **Colonna Ultimo contatto**: mostra tipo di engagement (Chiamata/Email/Meeting), quanto tempo fa e chi ha gestito il contatto
+- **Sync engagement migliorata**: scarica engagement anche dai contatti associati alle companies, non solo quelli associati direttamente alla company
+- **Property mapping**: colonna Piano ora legge da `plan_activated`, colonna Rinnovo da `plan_expire_date`
+- **Migrazione sicura**: rimosso connection string hardcoded dallo script di migrazione, ora usa `DATABASE_URL` da `.env.local`
+- **Script migrate**: esegue automaticamente tutti i file `.sql` in ordine

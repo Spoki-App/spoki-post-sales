@@ -34,10 +34,77 @@ export const config = {
   cron: {
     secret: process.env.CRON_SECRET || '',
   },
+  googleChat: {
+    releaseSpaceId: (process.env.GOOGLE_CHAT_RELEASE_SPACE_ID || '').trim(),
+  },
+  metabase: {
+    url: process.env.METABASE_URL || 'https://metabase.spoki.com',
+    apiKey: process.env.METABASE_API_KEY || '',
+    databaseId: parseInt(process.env.METABASE_DATABASE_ID || '2', 10),
+  },
+  stripe: {
+    apiKey: process.env.STRIPE_API_KEY || '',
+  },
+  gmail: {
+    user: process.env.GMAIL_USER || '',
+    appPassword: process.env.GMAIL_APP_PASSWORD || '',
+  },
+  fathom: {
+    apiKey: process.env.FATHOM_API_KEY || '',
+    baseUrl: (process.env.FATHOM_API_BASE_URL || 'https://api.fathom.ai').replace(/\/$/, ''),
+  },
+  ai: {
+    provider: (process.env.AI_PROVIDER || 'gemini') as 'gemini' | 'claude',
+    googleApiKey: process.env.GOOGLE_AI_API_KEY || '',
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  },
+  langfuse: {
+    baseUrl: (process.env.LANGFUSE_BASE_URL || 'https://cloud.langfuse.com').replace(/\/$/, ''),
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY || '',
+    secretKey: process.env.LANGFUSE_SECRET_KEY || '',
+  },
+  nar: {
+    /**
+     * CSV di host autorizzati come destinazione del forwarder n8n
+     * (es. "n8n.spoki.com,n8n.spoki.it"). Vuoto = solo dev (qualsiasi host),
+     * in produzione richiesto.
+     */
+    n8nWebhookAllowlist: (process.env.NAR_N8N_WEBHOOK_ALLOWLIST || '')
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean),
+    /**
+     * Finestra (giorni) considerata dalla query Metabase quando si rigenera il dataset NAR.
+     * 90 = ~13 settimane, allineato con WEEK_COUNT_FOR_90_DAYS del vecchio dashboard.
+     */
+    refreshWindowDays: (() => {
+      const n = parseInt(process.env.NAR_REFRESH_WINDOW_DAYS || '90', 10);
+      return Number.isFinite(n) && n > 0 ? n : 90;
+    })(),
+    /** Cron locale in dev per il refresh NAR (mai in produzione: usa Vercel cron). */
+    refreshDevCron: process.env.NAR_REFRESH_DEV_CRON === '1',
+  },
+  accountBrief: {
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    marketingMindApiUrl: process.env.MARKETING_MIND_API_URL || '',
+    marketingMindApiKey: process.env.MARKETING_MIND_API_KEY || '',
+    marketingMindFeaturesUrlTemplate:
+      process.env.MARKETING_MIND_FEATURES_URL_TEMPLATE || '',
+    whatsappCampaignsApiUrl: process.env.WHATSAPP_CAMPAIGNS_API_URL || '',
+    whatsappCampaignsApiKey: process.env.WHATSAPP_CAMPAIGNS_API_KEY || '',
+    whatsappCampaignsUrlTemplate: process.env.WHATSAPP_CAMPAIGNS_URL_TEMPLATE || '',
+  },
 };
 
-export function isConfigured(service: 'hubspot' | 'postgres'): boolean {
+export function isConfigured(service: 'hubspot' | 'postgres' | 'metabase' | 'stripe' | 'gmail' | 'fathom' | 'langfuse'): boolean {
   if (service === 'hubspot') return !!config.hubspot.apiKey;
   if (service === 'postgres') return !!(config.postgres.host || config.postgres.instanceConnectionName) && !!config.postgres.user;
+  if (service === 'metabase') return !!config.metabase.apiKey;
+  if (service === 'stripe') return !!config.stripe.apiKey;
+  if (service === 'gmail') return !!config.gmail.user && !!config.gmail.appPassword;
+  if (service === 'fathom') return !!config.fathom.apiKey;
+  if (service === 'langfuse') return !!config.langfuse.publicKey && !!config.langfuse.secretKey;
   return false;
 }

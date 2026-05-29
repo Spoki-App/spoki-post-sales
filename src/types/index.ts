@@ -5,6 +5,8 @@ export interface Client {
   name: string;
   domain: string | null;
   industry: string | null;
+  /** HubSpot `industry_spoki` (vertical Spoki), sincronizzato con CRM */
+  industrySpoki?: string | null;
   city: string | null;
   country: string | null;
   phone: string | null;
@@ -22,10 +24,54 @@ export interface Client {
   updatedAt: string;
 }
 
+export type HealthStatus = 'green' | 'yellow' | 'red';
+
+export interface ClientPlanUsage {
+  used: number;
+  included: number;
+}
+
 export interface ClientWithHealth extends Client {
-  healthScore: HealthScore | null;
-  openTicketsCount: number;
+  onboardingStage?: string | null;
+  onboardingStageType?: 'normal' | 'warning' | 'danger' | string | null;
+  onboardingTicket: {
+    hubspotId: string;
+    pipeline: string | null;
+    status: string | null;
+    subject: string | null;
+    activatedAt: string | null;
+  } | null;
+  supportTicketsCount: number;
+  latestSupportTicket: {
+    hubspotId: string;
+    status: string | null;
+    subject: string | null;
+  } | null;
+  purchaseSource: string | null;
   lastContactDate: string | null;
+  lastEngagement: {
+    hubspotId: string | null;
+    type: string | null;
+    occurredAt: string;
+    ownerId: string | null;
+    emailFrom: string | null;
+    emailTo: string | null;
+    callDirection: string | null;
+    callDisposition: string | null;
+    callTitle: string | null;
+  } | null;
+  /** Primary HubSpot contact for list views: most recently active, then name order. */
+  contactPerson: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    hubspotId: string;
+  } | null;
+  planUsage?: ClientPlanUsage | null;
+  /** Raw value from optional HubSpot company property (`accountQualityScore`); used for quality dot when set. */
+  accountQualityScore?: string | null;
+  salesDeal: DealSummary | null;
+  upsellingDeal: DealSummary | null;
 }
 
 // ─── Contact ──────────────────────────────────────────────────────────────────
@@ -70,26 +116,7 @@ export interface Engagement {
   occurredAt: string;
   ownerId: string | null;
   title: string | null;
-}
-
-// ─── Health Score ─────────────────────────────────────────────────────────────
-export type HealthStatus = 'green' | 'yellow' | 'red';
-
-export interface HealthScore {
-  id: string;
-  clientId: string;
-  score: number;
-  status: HealthStatus;
-  scoreLastContact: number;
-  scoreTickets: number;
-  scoreOnboarding: number;
-  scoreRenewal: number;
-  daysSinceLastContact: number | null;
-  openTicketsCount: number;
-  openHighTicketsCount: number;
-  onboardingPct: number;
-  daysToRenewal: number | null;
-  calculatedAt: string;
+  noteCategory: string | null;
 }
 
 // ─── Task ─────────────────────────────────────────────────────────────────────
@@ -141,6 +168,33 @@ export interface OnboardingProgress {
   updatedAt: string;
 }
 
+export interface OnboardingHubDashboardData {
+  owner: string;
+  totalInOnboarding: number;
+  completedCount: number;
+  problemCount: number;
+  activeCount: number;
+  happyPathStages: Array<{ id: string; label: string; count: number }>;
+  problemStages: Array<{ id: string; label: string; count: number }>;
+  renewals: Record<string, { count: number; totalMrr: number }>;
+}
+
+export interface OnboardingHubPipelineCard {
+  clientId: string;
+  hubspotId: string;
+  name: string;
+  domain: string | null;
+  mrr: number | null;
+  plan: string | null;
+  stage: string | null;
+  activatedAt: string | null;
+  openedAt: string | null;
+}
+
+export interface OnboardingHubPipelineData {
+  cards: OnboardingHubPipelineCard[];
+}
+
 // ─── Alert ────────────────────────────────────────────────────────────────────
 export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical';
 
@@ -171,6 +225,62 @@ export interface Alert {
   triggeredAt: string;
 }
 
+// ─── Client Goal ─────────────────────────────────────────────────────────────
+export type GoalStatus = 'active' | 'achieved' | 'abandoned';
+export type GoalSource = 'manual' | 'ai_extracted' | 'playbook';
+
+export interface ClientGoal {
+  id: string;
+  clientId: string;
+  title: string;
+  description: string | null;
+  status: GoalStatus;
+  source: GoalSource;
+  sourceEngagementId: string | null;
+  mentionedAt: string | null;
+  dueDate: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Deal ─────────────────────────────────────────────────────────────────────
+export interface DealSummary {
+  pipelineId: string;
+  pipelineLabel: string;
+  stageLabel: string;
+  stageOrder: number;
+  totalStages: number;
+  isClosed: boolean;
+  isWon: boolean;
+  dealName: string | null;
+  amount: number | null;
+  closeDate: string | null;
+  daysInStage: number | null;
+}
+
+export interface ClientDeal {
+  id: string;
+  hubspotId: string;
+  clientId: string;
+  pipelineId: string;
+  pipelineLabel: string;
+  stageId: string;
+  stageLabel: string;
+  stageOrder: number;
+  totalStages: number;
+  isClosed: boolean;
+  isWon: boolean;
+  dealName: string | null;
+  amount: number | null;
+  closeDate: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  daysInStage: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 export interface Workflow {
   id: string;
@@ -181,7 +291,7 @@ export interface Workflow {
   updatedAt: string;
 }
 
-export type WorkflowObjectType = 'contacts' | 'companies';
+export type WorkflowObjectType = 'contacts' | 'companies' | 'tickets';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 export interface ApiResponse<T> {
@@ -198,3 +308,50 @@ export interface PaginatedResponse<T> {
   page: number;
   pageSize: number;
 }
+
+export interface AccountBriefSections {
+  sintesiCliente: string;
+  featureSummary: string;
+  ticketSummary: string;
+  campagneSummary: string;
+  utilizzoPiattaforma: string;
+  rischioChurn: string;
+  prossimaBestAction: string;
+}
+
+export interface AccountBriefPayload {
+  generatedAt: string;
+  sections: AccountBriefSections;
+  model: string | null;
+  fallback: boolean;
+  context?: Record<string, unknown>;
+}
+
+// ─── NAR module re-exports ────────────────────────────────────────────────────
+export type {
+  NarUpload,
+  NarRow,
+  NarBucketKey,
+  NarBucketStats,
+  NarBucketResult,
+  NarFilterType,
+  NarFilters,
+  NarSnapshot,
+  NarSnapshotBucket,
+  NarSnapshotStats,
+  NarExclusionReason,
+  NarExcludedAccount,
+  NarOperatorSource,
+  NarOperatorEntry,
+  NarFindingSeverity,
+  NarSignalType,
+  NarFinding,
+  NarSignal,
+  NarPathAccount,
+  NarPathKey,
+  NarPlanRiskRow,
+  NarAction,
+  NarInsights,
+  NarN8nForwardRequest,
+  NarN8nForwardResult,
+} from './nar';

@@ -2,7 +2,10 @@
  * Typed API client for frontend → Next.js API routes communication.
  */
 
-import type { Client, ClientWithHealth, Ticket, Engagement, Contact, HealthScore, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse } from '@/types';
+import type { Client, ClientWithHealth, ClientGoal, ClientDeal, Ticket, Engagement, Contact, Task, OnboardingProgress, OnboardingTemplate, Alert, AlertRule, Workflow, PaginatedResponse, ApiResponse, AccountBriefPayload, OnboardingHubDashboardData, OnboardingHubPipelineData } from '@/types';
+import type { MarketFeedResult } from '@/lib/market/meta-feed';
+import { getFirebaseAuth } from '@/lib/firebase/client';
+import { useAuthStore } from '@/lib/store/auth';
 
 async function fetchApi<T>(
   path: string,
@@ -10,14 +13,26 @@ async function fetchApi<T>(
 ): Promise<T> {
   const { token, ...rest } = options ?? {};
 
-  const res = await fetch(`/api/v1${path}`, {
-    ...rest,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...rest.headers,
-    },
-  });
+  const request = (authToken: string | undefined) =>
+    fetch(`/api/v1${path}`, {
+      ...rest,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...rest.headers,
+      },
+    });
+
+  let res = await request(token);
+
+  if (res.status === 401 && token) {
+    const user = getFirebaseAuth().currentUser;
+    if (user) {
+      const fresh = await user.getIdToken(true);
+      useAuthStore.getState().setToken(fresh);
+      res = await request(fresh);
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
@@ -29,20 +44,264 @@ async function fetchApi<T>(
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 export const clientsApi = {
-  list: (token: string, params?: { page?: number; q?: string; status?: string; owner?: string; viewAll?: boolean; section?: string }) => {
+  list: (
+    token: string,
+    params?: {
+      page?: number;
+      q?: string;
+      owner?: string;
+      onboardingOwner?: string;
+      viewAll?: boolean;
+      section?: string;
+      sort?: string;
+      dir?: string;
+      source?: string;
+      plan?: string;
+      onboardingStage?: string;
+      hasTickets?: string;
+      pipelineDays?: string;
+      contactContext?: 'portfolio';
+    },
+    signal?: AbortSignal
+  ) => {
     const qs = new URLSearchParams(params as unknown as Record<string, string>).toString();
-    return fetchApi<PaginatedResponse<ClientWithHealth>>(`/clients${qs ? `?${qs}` : ''}`, { token });
+    return fetchApi<PaginatedResponse<ClientWithHealth>>(`/clients${qs ? `?${qs}` : ''}`, { token, signal });
   },
   get: (token: string, id: string) =>
     fetchApi<ApiResponse<Client>>(`/clients/${id}`, { token }),
-  getHealth: (token: string, id: string) =>
-    fetchApi<ApiResponse<HealthScore>>(`/clients/${id}/health`, { token }),
   getTickets: (token: string, id: string) =>
     fetchApi<ApiResponse<Ticket[]>>(`/clients/${id}/tickets`, { token }),
   getEngagements: (token: string, id: string) =>
     fetchApi<ApiResponse<Engagement[]>>(`/clients/${id}/engagements`, { token }),
   getContacts: (token: string, id: string, role?: string) =>
     fetchApi<ApiResponse<Contact[]>>(`/clients/${id}/contacts${role ? `?role=${encodeURIComponent(role)}` : ''}`, { token }),
+  getAiAnalysis: (token: string, id: string) =>
+    fetchApi<ApiResponse<{
+      summary: string;
+      riskLevel: 'low' | 'medium' | 'high' | 'critical';
+      strengths: string[];
+      concerns: string[];
+      actions: Array<{ title: string; priority: string; description: string }>;
+    }>>(`/clients/${id}/ai-analysis`, { method: 'POST', token }),
+  getOnboardingHistory: (token: string, id: string) =>
+    fetchApi<ApiResponse<{
+      steps: Array<{ id: string; label: string; completedAt: string | null }>;
+      currentStage: string | null;
+      currentStageId: string | null;
+      ticketHubspotId: string | null;
+      issues: Array<{ label: string; occurredAt: string }>;
+    }>>(`/clients/${id}/onboarding-history`, { token }),
+  getAccountBrief: (token: string, id: string) =>
+    fetchApi<ApiResponse<AccountBriefPayload>>(`/clients/${id}/account-brief`, { method: 'POST', token }),
+  getGoals: (token: string, id: string) =>
+    fetchApi<ApiResponse<ClientGoal[]>>(`/clients/${id}/goals`, { token }),
+  createGoal: (token: string, id: string, data: { title: string; description?: string; dueDate?: string }) =>
+    fetchApi<ApiResponse<{ id: string }>>(`/clients/${id}/goals`, { method: 'POST', token, body: JSON.stringify(data) }),
+  updateGoal: (token: string, id: string, data: { goalId: string; title?: string; description?: string; status?: string; dueDate?: string }) =>
+    fetchApi<ApiResponse<{ updated: boolean }>>(`/clients/${id}/goals`, { method: 'PATCH', token, body: JSON.stringify(data) }),
+  extractGoals: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ extracted: number }>>(`/clients/${id}/goals/extract`, { method: 'POST', token }),
+  syncGoalsToHubspot: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ noteId: string; goalsCount: number }>>(`/clients/${id}/goals/sync-hubspot`, { method: 'POST', token }),
+  getDeals: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ sales: ClientDeal[]; upselling: ClientDeal[] }>>(`/clients/${id}/deals`, { token }),
+  listOwners: (token: string) =>
+    fetchApi<ApiResponse<Array<{ id: string; firstName: string; lastName: string; team: string }>>>(
+      `/clients/owners`,
+      { token }
+    ),
+  listPlanOptions: (token: string) =>
+    fetchApi<ApiResponse<string[]>>(`/clients/plan-options`, { token }),
+};
+
+// ─── Customer Success ──────────────────────────────────────────────────────────
+export const customerSuccessApi = {
+  dashboards: (token: string) =>
+    fetchApi<
+      ApiResponse<{
+        owner: { id: string; name: string };
+        portfolio: { clientCount: number; totalMrr: number };
+        renewals: Record<string, { count: number; totalMrr: number }>;
+        pipeline: {
+          inPipeline: number;
+          completed: number;
+          totalInCsFlow: number;
+          eligibleToAddCount: number;
+          byStage: Array<{ stage: string; label: string; count: number }>;
+        };
+        hubspotDashboard: {
+          title: string;
+          embedUrl: string;
+          openUrl: string;
+        } | null;
+      }>
+    >('/customer-success/dashboards', { token }),
+  clients: (token: string, params?: { page?: number; q?: string }) => {
+    const qs = params ? new URLSearchParams(params as Record<string, string>).toString() : '';
+    return fetchApi<
+      PaginatedResponse<{
+        id: string;
+        hubspotId: string;
+        name: string;
+        domain: string | null;
+        plan: string | null;
+        mrr: number | null;
+        renewalDate: string | null;
+        contactPerson: {
+          firstName: string | null;
+          lastName: string | null;
+          email: string | null;
+          hubspotId: string;
+        } | null;
+      }>
+    >(`/customer-success/clients${qs ? `?${qs}` : ''}`, { token });
+  },
+  pipeline: (token: string) =>
+    fetchApi<
+      ApiResponse<{
+        cards: Array<{
+          clientId: string;
+          stage: string;
+          name: string;
+          hubspotId: string;
+          mrr: number | null;
+          activatedAt: string | null;
+          hasPipelineRow?: boolean;
+        }>;
+      }>
+    >('/customer-success/pipeline', { token }),
+  addToPipeline: (token: string, clientId: string) =>
+    fetchApi<ApiResponse<{ ok: boolean }>>('/customer-success/pipeline', {
+      method: 'POST',
+      body: JSON.stringify({ clientId }),
+      token,
+    }),
+  movePipelineStage: (token: string, clientId: string, stage: string) =>
+    fetchApi<ApiResponse<{ ok: boolean }>>(`/customer-success/pipeline/${clientId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage }),
+      token,
+    }),
+};
+
+// ─── Industries (Spoki vertical / industry_spoki) ───────────────────────────
+export const industriesApi = {
+  stats: (token: string, params?: { viewAll?: boolean; section?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        totalClients: number;
+        activeIndustries: number;
+        useCaseCount: number;
+        caseStudyCount: number;
+        qbrGeneratedCount: number;
+      }>
+    >(`/industries/stats${s ? `?${s}` : ''}`, { token });
+  },
+  list: (token: string, params?: { viewAll?: boolean; section?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        industries: Array<{ key: string | null; label: string; clientCount: number }>;
+      }>
+    >(`/industries${s ? `?${s}` : ''}`, { token });
+  },
+  clients: (
+    token: string,
+    params?: {
+      q?: string;
+      viewAll?: boolean;
+      section?: string;
+      industry?: string;
+      sort?: string;
+      dir?: string;
+    }
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set('q', params.q);
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    if (params?.industry !== undefined) qs.set('industry', params.industry);
+    if (params?.sort) qs.set('sort', params.sort);
+    if (params?.dir) qs.set('dir', params.dir);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        groups: Array<{
+          key: string | null;
+          label: string;
+          clients: Array<{
+            id: string;
+            hubspotId: string;
+            name: string;
+            industrySpoki: string | null;
+            plan: string | null;
+            mrr: number | null;
+            onboardingStatus: string | null;
+            churnRisk: string | null;
+            lastContactDate: string | null;
+            csm: { ownerId: string | null; label: string | null };
+            health: { score: number | null; status: string | null };
+            engagement90d: number;
+          }>;
+        }>;
+        totalClients: number;
+        limited: boolean;
+        maxRows: number;
+      }>
+    >(`/industries/clients${s ? `?${s}` : ''}`, { token });
+  },
+  library: (token: string, params?: { industry?: string; type?: 'use_case' | 'case_study' }) => {
+    const qs = new URLSearchParams();
+    if (params?.industry) qs.set('industry', params.industry);
+    if (params?.type) qs.set('type', params.type);
+    const s = qs.toString();
+    return fetchApi<
+      ApiResponse<{
+        items: Array<{
+          id: string;
+          contentType: 'use_case' | 'case_study';
+          sourceUrl: string;
+          title: string;
+          summary: string | null;
+          industrySpokiMatch: string | null;
+          metadata: unknown;
+          fetchedAt: string;
+        }>;
+      }>
+    >(`/industries/library${s ? `?${s}` : ''}`, { token });
+  },
+  benchmark: (token: string, industry: string, params?: { viewAll?: boolean; section?: string }) => {
+    const qs = new URLSearchParams({ industry });
+    if (params?.viewAll) qs.set('viewAll', 'true');
+    if (params?.section) qs.set('section', params.section);
+    return fetchApi<
+      ApiResponse<{
+        industry: string;
+        sampleSize: number;
+        benchmark: {
+          engagement90d: { p50: number | null; p75: number | null; min: number | null; max: number | null };
+          healthScore: { p50: number | null; p75: number | null };
+        };
+        topClients: Array<{
+          id: string;
+          name: string;
+          mrr: number | null;
+          engagement90d: number;
+          healthScore: number | null;
+          composite: number;
+          csmLabel: string | null;
+        }>;
+        usageNote: string;
+      }>
+    >(`/industries/benchmark?${qs.toString()}`, { token });
+  },
 };
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
@@ -91,14 +350,186 @@ export const onboardingApi = {
     }),
 };
 
+// ─── Onboarding Hub ──────────────────────────────────────────────────────────
+export const onboardingHubApi = {
+  clients: (token: string, params: { q?: string; page?: number }) => {
+    const qs = new URLSearchParams(params as Record<string, string>).toString();
+    return fetchApi<PaginatedResponse<Record<string, unknown>>>(`/onboarding-hub/clients${qs ? `?${qs}` : ''}`, { token });
+  },
+  dashboard: (token: string) =>
+    fetchApi<ApiResponse<OnboardingHubDashboardData>>('/onboarding-hub/dashboard', { token }),
+  pipeline: (token: string) =>
+    fetchApi<ApiResponse<OnboardingHubPipelineData>>('/onboarding-hub/pipeline', { token }),
+};
+
+export const marketApi = {
+  metaFeed: (token: string) => fetchApi<ApiResponse<MarketFeedResult>>('/market/meta-feed', { token }),
+};
+
 // ─── Workflows ────────────────────────────────────────────────────────────────
 export const workflowsApi = {
   list: (token: string) =>
     fetchApi<ApiResponse<Workflow[]>>('/hubspot/workflows', { token }),
-  enroll: (token: string, workflowId: string, objectId: string, objectType: 'contacts' | 'companies') =>
+  enroll: (token: string, workflowId: string, objectId: string, objectType: 'contacts' | 'companies' | 'tickets', contactEmail?: string) =>
     fetchApi<ApiResponse<{ enrolled: boolean }>>('/hubspot/workflows/enroll', {
       method: 'POST',
-      body: JSON.stringify({ workflowId, objectId, objectType }),
+      body: JSON.stringify({ workflowId, objectId, objectType, ...(contactEmail ? { contactEmail } : {}) }),
+      token,
+    }),
+};
+
+// ─── AI ──────────────────────────────────────────────────────────────────────
+export const aiApi = {
+  chat: (token: string, message: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = []) =>
+    fetchApi<ApiResponse<{ message: string }>>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, history }),
+      token,
+    }),
+  portfolioInsights: (token: string) =>
+    fetchApi<ApiResponse<{
+      overview: string;
+      riskDistribution: { low: number; medium: number; high: number; critical: number };
+      topRisks: Array<{ client: string; reason: string }>;
+      topOpportunities: Array<{ client: string; reason: string }>;
+      recommendations: string[];
+    }>>('/ai/portfolio-insights', { method: 'POST', token }),
+  generateQbr: (token: string, clientId: string, language?: string) =>
+    fetchApi<ApiResponse<Array<{ title: string; content: string; type: string }>>>('/ai/generate-qbr', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, language }),
+      token,
+    }),
+  generateEmail: (token: string, clientId: string, type: string, customInstructions?: string) =>
+    fetchApi<ApiResponse<{ subject: string; body: string }>>('/ai/generate-email', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, type, customInstructions }),
+      token,
+    }),
+  generateTouchpointQuestions: (
+    token: string,
+    clientId: string,
+    type: string,
+    additionalContext?: string,
+  ) =>
+    fetchApi<ApiResponse<TouchpointQuestionsGeneration>>('/ai/touchpoint-questions', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, type, additionalContext }),
+      token,
+    }),
+  listTouchpointTypes: (token: string) =>
+    fetchApi<ApiResponse<{ types: TouchpointTypeSummary[] }>>('/ai/touchpoint-types', { token }),
+  generateIndustryWaStrategies: (
+    token: string,
+    body: {
+      industryLabel: string;
+      clientCount?: number | null;
+      industryHubspotKey?: string | null;
+    }
+  ) =>
+    fetchApi<
+      ApiResponse<{
+        executiveSummary: string;
+        strategies: Array<{
+          title: string;
+          objective: string;
+          tactics: string[];
+          exampleTemplate: string;
+          kpis: string[];
+          complianceNote: string;
+        }>;
+      }>
+    >('/ai/generate-industry-wa-strategies', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    }),
+};
+
+// ─── Touchpoint Questions ─────────────────────────────────────────────────────
+
+export type TouchpointQuestionsOutput = {
+  objective: string;
+  talkingPoints: string[];
+  openingQuestions: string[];
+  discoveryQuestions: string[];
+  challengeQuestions: string[];
+  closingQuestions: string[];
+  redFlags: string[];
+};
+
+export type TouchpointQuestionsGeneration = {
+  template: { id: string; type: string; version: string; label: string };
+  questions: TouchpointQuestionsOutput;
+  generatedAt: string;
+};
+
+export type TouchpointTypeSummary = {
+  type: string;
+  label: string;
+  description: string | null;
+  hasActiveTemplate: boolean;
+  isSeed: boolean;
+};
+
+export type TouchpointTemplateRow = {
+  id: string;
+  touchpointType: string;
+  version: string;
+  label: string;
+  description: string | null;
+  systemPrompt: string;
+  isActive: boolean;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const touchpointTemplatesApi = {
+  /** Lista admin (richiede admin); per la modale lato CSM usare aiApi.listTouchpointTypes. */
+  list: (token: string) =>
+    fetchApi<ApiResponse<{ types: TouchpointTypeSummary[] }>>('/admin/touchpoint-templates', { token }),
+
+  get: (token: string, type: string) =>
+    fetchApi<ApiResponse<{ active: TouchpointTemplateRow; history: TouchpointTemplateRow[] }>>(
+      `/admin/touchpoint-templates/${encodeURIComponent(type)}`,
+      { token },
+    ),
+
+  createDraft: (
+    token: string,
+    type: string,
+    body: { systemPrompt: string; label?: string; description?: string | null; notes?: string | null },
+  ) =>
+    fetchApi<ApiResponse<TouchpointTemplateRow>>(
+      `/admin/touchpoint-templates/${encodeURIComponent(type)}`,
+      { method: 'POST', token, body: JSON.stringify(body) },
+    ),
+
+  activate: (token: string, type: string, id: string) =>
+    fetchApi<ApiResponse<TouchpointTemplateRow>>(
+      `/admin/touchpoint-templates/${encodeURIComponent(type)}/activate`,
+      { method: 'POST', token, body: JSON.stringify({ id }) },
+    ),
+
+  createType: (
+    token: string,
+    body: { type: string; label: string; description?: string | null; systemPrompt: string },
+  ) =>
+    fetchApi<ApiResponse<TouchpointTemplateRow>>('/admin/touchpoint-templates', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+};
+
+// ─── QBR ──────────────────────────────────────────────────────────────────────
+export const qbrApi = {
+  send: (token: string, clientName: string, recipientEmails: string[], pdfBase64: string) =>
+    fetchApi<ApiResponse<{ sent: number }>>('/qbr/send', {
+      method: 'POST',
+      body: JSON.stringify({ clientName, recipientEmails, pdfBase64 }),
       token,
     }),
 };
@@ -107,6 +538,537 @@ export const workflowsApi = {
 export const reportsApi = {
   summary: (token: string) =>
     fetchApi<ApiResponse<Record<string, unknown>>>('/reports/summary', { token }),
-  healthTrend: (token: string, days = 30) =>
-    fetchApi<ApiResponse<Record<string, unknown>>>(`/reports/health-trend?days=${days}`, { token }),
+};
+
+export type CheckpointEvidence = {
+  evidence: string | null;
+  confidence: 'low' | 'medium' | 'high';
+};
+
+export type StoredCallAnalysis = {
+  checkpoints: Record<string, boolean>;
+  evidences: Record<string, CheckpointEvidence> | null;
+  passedCount: number;
+  totalCheckpoints: number;
+  promptVersion: string;
+  model: string;
+  analyzedAt: string;
+  fathomUrl: string | null;
+};
+
+export type MatchFailureReason =
+  | 'NO_FATHOM_URL'
+  | 'NO_TRANSCRIPT'
+  | 'NO_MATCH'
+  | 'FATHOM_FETCH_FAILED'
+  | 'NO_TITLE';
+
+export type CallMatchFailure = {
+  hubspotId: string;
+  callType: CallReportType;
+  reasonCode: MatchFailureReason;
+  reasonMessage: string;
+  attempts: number;
+  lastAttemptAt: string;
+};
+
+export type TeamReportCallRow = {
+  hubspotId: string;
+  title: string;
+  date: string;
+  outcome: string | null;
+  owner: { id: string | null; name: string };
+  client: { id: string | null; hubspotId: string | null; name: string; domain: string | null } | null;
+  analysis: StoredCallAnalysis | null;
+  matchFailure?: CallMatchFailure | null;
+};
+
+export type CheckpointResult = {
+  passed: boolean;
+  evidence: string | null;
+  confidence: 'low' | 'medium' | 'high';
+};
+
+export type ActivationCheckpointAnalysis = Record<string, CheckpointResult>;
+export type TrainingCheckpointAnalysis = Record<string, CheckpointResult>;
+export type CallCheckpointAnalysis = Record<string, CheckpointResult>;
+export type CallReportType = 'activation' | 'training';
+
+export type CheckpointPassRate = {
+  key: string;
+  passRate: number;
+  passed: number;
+  total: number;
+};
+
+export type OwnerLeaderboardEntry = {
+  ownerId: string | null;
+  ownerName: string;
+  totalCalls: number;
+  analyzedCount: number;
+  noFathomCount: number;
+  pendingCount: number;
+  avgPassRate: number;
+  avgPassedCount: number;
+  totalCheckpoints: number;
+  checkpointPassRates: Record<string, number>;
+};
+
+export type WeeklyTrendPoint = {
+  weekStart: string;
+  total: number;
+  analyzed: number;
+  avgPassRate: number;
+};
+
+export type ClientLeaderboardEntry = {
+  clientId: string;
+  clientName: string;
+  clientHubspotId: string | null;
+  totalCalls: number;
+  analyzedCount: number;
+  avgPassRate: number;
+  avgPassedCount: number;
+  totalCheckpoints: number;
+  lastAnalyzedAt: string | null;
+};
+
+export type CallSummaryResponse = {
+  totals: {
+    totalCalls: number;
+    analyzedCount: number;
+    noFathomCount: number;
+    pendingCount: number;
+    avgPassRate: number;
+    avgPassedCount: number;
+    totalCheckpoints: number;
+  };
+  checkpointPassRates: CheckpointPassRate[];
+  ownerLeaderboard: OwnerLeaderboardEntry[];
+  clientLeaderboard: ClientLeaderboardEntry[];
+  weeklyTrend: WeeklyTrendPoint[];
+};
+
+export const callReportsApi = {
+  listCalls: (
+    token: string,
+    type: CallReportType,
+    params: {
+      days: number;
+      owner?: string;
+      outcome?: string;
+      from?: string;
+      to?: string;
+      clientId?: string;
+    },
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set('days', String(params.days));
+    if (params.owner) qs.set('owner', params.owner);
+    if (params.outcome) qs.set('outcome', params.outcome);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    const q = qs.toString();
+    return fetchApi<
+      ApiResponse<TeamReportCallRow[]> & {
+        total?: number;
+        currentPromptVersion?: string;
+        currentLabels?: Record<string, string>;
+      }
+    >(`/call-reports/${type}/calls${q ? `?${q}` : ''}`, { token });
+  },
+
+  analyzeCall: (token: string, type: CallReportType, hubspotId: string) =>
+    fetchApi<ApiResponse<{ analysis: CallCheckpointAnalysis; fathomUrl?: string }>>(
+      `/call-reports/${type}/calls/${encodeURIComponent(hubspotId)}/analyze`,
+      { method: 'POST', token },
+    ),
+
+  deleteAnalysis: (token: string, type: CallReportType, hubspotId: string) =>
+    fetchApi<ApiResponse<{ removed: boolean }>>(
+      `/call-reports/${type}/calls/${encodeURIComponent(hubspotId)}/analysis`,
+      { method: 'DELETE', token },
+    ),
+
+  listStale: (token: string, type: CallReportType) =>
+    fetchApi<ApiResponse<{ currentPromptVersion: string; staleHubspotIds: string[]; count: number }>>(
+      `/call-reports/${type}/calls/refresh-stale`,
+      { token },
+    ),
+
+  deleteStale: (token: string, type: CallReportType) =>
+    fetchApi<ApiResponse<{ removed: number }>>(
+      `/call-reports/${type}/calls/refresh-stale`,
+      { method: 'DELETE', token },
+    ),
+
+  summary: (
+    token: string,
+    type: CallReportType,
+    params: {
+      days: number;
+      owner?: string;
+      from?: string;
+      to?: string;
+      clientId?: string;
+    },
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set('days', String(params.days));
+    if (params.owner) qs.set('owner', params.owner);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    return fetchApi<ApiResponse<CallSummaryResponse>>(
+      `/call-reports/${type}/summary?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  diagnostics: (token: string, type: CallReportType, hubspotIds?: string[]) => {
+    const qs = hubspotIds && hubspotIds.length > 0 ? `?ids=${hubspotIds.join(',')}` : '';
+    return fetchApi<ApiResponse<{ failures: CallMatchFailure[]; count: number }>>(
+      `/call-reports/${type}/calls/diagnostics${qs}`,
+      { token },
+    );
+  },
+
+  analyzeBatch: async (
+    token: string,
+    type: CallReportType,
+    hubspotIds: string[],
+    signal?: AbortSignal,
+  ) => {
+    const post = (authToken: string | undefined) =>
+      fetch(`/api/v1/call-reports/${type}/calls/analyze-batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ hubspotIds }),
+        signal,
+      });
+
+    let res = await post(token);
+    if (res.status === 401 && token) {
+      const user = getFirebaseAuth().currentUser;
+      if (user) {
+        const fresh = await user.getIdToken(true);
+        useAuthStore.getState().setToken(fresh);
+        res = await post(fresh);
+      }
+    }
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? `API error ${res.status}`);
+    }
+    return res;
+  },
+};
+
+// ─── Prompt Templates (admin) ─────────────────────────────────────────────────
+
+export type PromptCheckpoint = { key: string; label: string; description: string };
+
+export type PromptTemplateRow = {
+  id: string;
+  callType: CallReportType;
+  version: string;
+  systemPrompt: string;
+  checkpoints: PromptCheckpoint[];
+  isActive: boolean;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DryRunResult = {
+  engagementHubspotId: string;
+  callType: CallReportType;
+  templateId: string;
+  templateVersion: string;
+  elapsedMs: number;
+  transcriptLines: number;
+  analysis: Record<string, { passed: boolean; evidence: string | null; confidence: 'low' | 'medium' | 'high' }>;
+};
+
+export const promptTemplatesApi = {
+  get: (token: string, type: CallReportType) =>
+    fetchApi<ApiResponse<{ active: PromptTemplateRow; history: PromptTemplateRow[] }>>(
+      `/admin/prompts/${type}`,
+      { token },
+    ),
+
+  createDraft: (
+    token: string,
+    type: CallReportType,
+    body: { systemPrompt: string; checkpoints: PromptCheckpoint[]; notes?: string | null },
+  ) =>
+    fetchApi<ApiResponse<PromptTemplateRow>>(`/admin/prompts/${type}`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  activate: (token: string, type: CallReportType, id: string) =>
+    fetchApi<ApiResponse<PromptTemplateRow>>(`/admin/prompts/${type}/activate`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ id }),
+    }),
+
+  dryRun: (
+    token: string,
+    type: CallReportType,
+    body: {
+      engagementHubspotId: string;
+      templateId?: string;
+      template?: { systemPrompt: string; checkpoints: PromptCheckpoint[] };
+    },
+  ) =>
+    fetchApi<ApiResponse<DryRunResult>>(`/admin/prompts/${type}/dry-run`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+};
+
+// Legacy aliases kept for backward compatibility with existing callers.
+export const teamReportsApi = {
+  listCalls: (
+    token: string,
+    params: { type: string; days: number; owner?: string; outcome?: string },
+  ) => callReportsApi.listCalls(token, (params.type as CallReportType) || 'activation', params),
+  analyzeCall: (token: string, hubspotId: string) =>
+    callReportsApi.analyzeCall(token, 'activation', hubspotId),
+  analyzeBatch: (token: string, hubspotIds: string[], signal?: AbortSignal) =>
+    callReportsApi.analyzeBatch(token, 'activation', hubspotIds, signal),
+};
+
+export const trainingReportsApi = {
+  listCalls: (token: string, params: { days: number; owner?: string; outcome?: string }) =>
+    callReportsApi.listCalls(token, 'training', params),
+  analyzeCall: (token: string, hubspotId: string) =>
+    callReportsApi.analyzeCall(token, 'training', hubspotId),
+  analyzeBatch: (token: string, hubspotIds: string[], signal?: AbortSignal) =>
+    callReportsApi.analyzeBatch(token, 'training', hubspotIds, signal),
+};
+
+// ─── Dashboard Data (Metabase integration) ────────────────────────────────────
+import type {
+  NrrGrrMonth, AccountPayments, SubscriptionHistoryEntry,
+  ChurnRecord, ParetoAnalysis, DailyKpis,
+} from '@/types/dashboard';
+
+export const dashboardDataApi = {
+  mrrHistory: (token: string, accountId?: string) => {
+    const qs = accountId ? `?account_id=${accountId}` : '';
+    return fetchApi<ApiResponse<NrrGrrMonth[]> & { accountMrr?: Array<{ month: string; mrr: number; prevMrr: number; category: string }> }>(
+      `/dashboard-data/mrr-history${qs}`, { token }
+    );
+  },
+  nrrGrr: (token: string) =>
+    fetchApi<ApiResponse<NrrGrrMonth[]>>('/dashboard-data/nrr-grr', { token }),
+  paymentStatus: (token: string, accountId: string) =>
+    fetchApi<ApiResponse<AccountPayments>>(`/dashboard-data/payment-status?account_id=${accountId}`, { token }),
+  subscriptionHistory: (token: string, accountId: string) =>
+    fetchApi<ApiResponse<{ accountId: number; subscriptions: SubscriptionHistoryEntry[] }>>(
+      `/dashboard-data/subscription-history?account_id=${accountId}`, { token }
+    ),
+  churnDetails: (token: string) =>
+    fetchApi<ApiResponse<ChurnRecord[]> & { summary?: { total: number; totalMrrAtRisk: number } }>(
+      '/dashboard-data/churn-details', { token }
+    ),
+  pareto: (token: string, month?: string) => {
+    const qs = month ? `?month=${month}` : '';
+    return fetchApi<ApiResponse<ParetoAnalysis>>(`/dashboard-data/pareto${qs}`, { token });
+  },
+  dailyKpis: (token: string) =>
+    fetchApi<ApiResponse<DailyKpis>>('/dashboard-data/daily-kpis', { token }),
+  forecast: (token: string, accountId: string) =>
+    fetchApi<ApiResponse<{
+      currentMrr: number; forecastMrr: number; trend3m: number;
+      churnRisk: 'low' | 'medium' | 'high';
+      predictedOutcome: 'renew' | 'churn' | 'expansion' | 'contraction';
+      confidence: number;
+    }>>(`/dashboard-data/forecast?account_id=${accountId}`, { token }),
+};
+
+// ─── AI Monitoring (Langfuse, admin) ─────────────────────────────────────────
+import type {
+  LangfuseIdType,
+  LangfuseLookupResponse,
+  LangfuseTraceDetail,
+} from '@/types/langfuse';
+
+export type {
+  LangfuseIdType,
+  LangfuseLookupResponse,
+  LangfuseTrace,
+  LangfuseTraceDetail,
+  LangfuseObservation,
+  LangfuseObservationType,
+  LangfuseLevel,
+  LangfuseUsage,
+} from '@/types/langfuse';
+
+export const aiMonitoringApi = {
+  lookup: (
+    token: string,
+    params: { idType: LangfuseIdType; id: string; from?: string; to?: string; page?: number; limit?: number },
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set('idType', params.idType);
+    qs.set('id', params.id);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    return fetchApi<ApiResponse<LangfuseLookupResponse>>(
+      `/admin/ai-monitoring/lookup?${qs.toString()}`,
+      { token },
+    );
+  },
+  getTrace: (token: string, id: string) =>
+    fetchApi<ApiResponse<LangfuseTraceDetail>>(
+      `/admin/ai-monitoring/trace/${encodeURIComponent(id)}`,
+      { token },
+    ),
+};
+
+// ─── Churn Tracker ────────────────────────────────────────────────────────────
+import type { ChurnTrackerRecord, ChurnNote, ChurnSummary } from '@/types/churn';
+
+export const churnTrackerApi = {
+  listRecords: (token: string, params?: { filter?: string; status?: string; reason?: string; assigned?: string; q?: string }) => {
+    const qs = params ? new URLSearchParams(params as Record<string, string>).toString() : '';
+    return fetchApi<ApiResponse<ChurnTrackerRecord[]> & { total?: number }>(
+      `/churn-tracker/records${qs ? `?${qs}` : ''}`, { token }
+    );
+  },
+  updateRecord: (token: string, id: string, body: Partial<{ status: string; churnReason: string | null; contactOutcome: string | null; assignedTo: { name: string; email?: string } | null }>) =>
+    fetchApi<ApiResponse<unknown>>(`/churn-tracker/records/${id}`, { method: 'PATCH', body: JSON.stringify(body), token }),
+  batchAction: (token: string, body: { ids: string[]; action: 'status' | 'assign'; status?: string; assignedTo?: { name: string; email?: string } | null }) =>
+    fetchApi<ApiResponse<{ updated: number }>>('/churn-tracker/records/batch', { method: 'POST', body: JSON.stringify(body), token }),
+  getNotes: (token: string, recordId: string) =>
+    fetchApi<ApiResponse<ChurnNote[]>>(`/churn-tracker/records/${recordId}/notes`, { token }),
+  addNote: (token: string, recordId: string, text: string) =>
+    fetchApi<ApiResponse<ChurnNote>>(`/churn-tracker/records/${recordId}/notes`, { method: 'POST', body: JSON.stringify({ text }), token }),
+  sync: (token: string) =>
+    fetchApi<ApiResponse<{ added: number; updated: number; renewed: number; total: number }>>('/churn-tracker/sync', { method: 'POST', token }),
+  summary: (token: string) =>
+    fetchApi<ApiResponse<ChurnSummary>>('/churn-tracker/summary', { token }),
+};
+
+// ─── NAR Dashboard ────────────────────────────────────────────────────────────
+import type {
+  NarUpload,
+  NarRow,
+  NarOperatorEntry,
+  NarExcludedAccount,
+  NarExclusionReason,
+  NarSnapshot,
+  NarSnapshotBucket,
+  NarSnapshotStats,
+  NarFilters,
+  NarFilterType,
+  NarBucketKey,
+  NarInsights,
+  NarN8nForwardResult,
+} from '@/types/nar';
+
+export interface NarOperatorUpsertInput {
+  accountId: number;
+  operatorName: string;
+  accountName?: string | null;
+  partnerType?: string | null;
+  plan?: string | null;
+  status?: string | null;
+}
+
+export const narApi = {
+  // ─── dataset ──────────────────────────────────────────────────────────────
+  listUploads: (token: string, limit?: number) =>
+    fetchApi<ApiResponse<NarUpload[]>>(`/nar/dataset${limit ? `?limit=${limit}` : ''}`, { token }),
+  uploadDataset: (token: string, body: { csv?: string; rows?: NarRow[]; fileName?: string; notes?: string }) =>
+    fetchApi<ApiResponse<{ id: string; rowCount: number }>>('/nar/dataset', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  getCurrentDataset: (token: string) =>
+    fetchApi<ApiResponse<{ upload: NarUpload | null; rows: NarRow[] }>>('/nar/dataset/current', { token }),
+
+  // ─── operators ────────────────────────────────────────────────────────────
+  listOperators: (token: string) =>
+    fetchApi<ApiResponse<NarOperatorEntry[]>>('/nar/operators', { token }),
+  uploadOperators: (token: string, body: { csv?: string; rows?: NarOperatorUpsertInput[] }) =>
+    fetchApi<ApiResponse<{ written: number }>>('/nar/operators', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  setOperator: (
+    token: string,
+    body: NarOperatorUpsertInput,
+  ) =>
+    fetchApi<ApiResponse<{ updated: boolean }>>('/nar/operators', {
+      method: 'PATCH', token, body: JSON.stringify(body),
+    }),
+
+  // ─── exclusions ───────────────────────────────────────────────────────────
+  listExclusions: (token: string, reason?: NarExclusionReason) =>
+    fetchApi<ApiResponse<NarExcludedAccount[]>>(
+      `/nar/exclusions${reason ? `?reason=${reason}` : ''}`, { token }
+    ),
+  addExclusion: (token: string, body: { accountId: number; reason: NarExclusionReason; accountName?: string | null; notes?: string | null }) =>
+    fetchApi<ApiResponse<{ added: boolean }>>('/nar/exclusions', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  removeExclusion: (token: string, accountId: number, reason: NarExclusionReason) =>
+    fetchApi<ApiResponse<{ removed: boolean }>>(
+      `/nar/exclusions?accountId=${accountId}&reason=${reason}`, { method: 'DELETE', token }
+    ),
+
+  // ─── snapshots ────────────────────────────────────────────────────────────
+  listSnapshots: (token: string) =>
+    fetchApi<ApiResponse<NarSnapshot[]>>('/nar/snapshots', { token }),
+  saveSnapshot: (token: string, body: {
+    label: string;
+    filterType: NarFilterType;
+    monthFilter: number[];
+    weekFilter: number[];
+    excludeWeekZero: boolean;
+    uploadId: string | null;
+    stats: NarSnapshotStats;
+    buckets: NarSnapshotBucket[];
+  }) =>
+    fetchApi<ApiResponse<{ id: string }>>('/nar/snapshots', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+  deleteSnapshot: (token: string, id: string) =>
+    fetchApi<ApiResponse<{ removed: boolean }>>(`/nar/snapshots?id=${id}`, { method: 'DELETE', token }),
+
+  // ─── insights ─────────────────────────────────────────────────────────────
+  generateInsights: (token: string, body: { uploadId?: string; filters: NarFilters; bucketKey?: NarBucketKey }) =>
+    fetchApi<ApiResponse<NarInsights | null>>('/nar/insights', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
+
+  // ─── refresh da Metabase (sostituisce upload CSV nel flusso normale) ─────
+  refreshFromMetabase: (token: string) =>
+    fetchApi<ApiResponse<{
+      uploadId: string | null;
+      rowCount: number;
+      accountCount: number;
+      weeksCovered: number;
+      windowDays: number;
+      enrichedAccountCount: number;
+      unmatchedAccountCount: number;
+    }> & { warning?: string }>('/nar/dataset/refresh', { method: 'POST', token }),
+
+  // ─── n8n forward ──────────────────────────────────────────────────────────
+  n8nForward: (token: string, body: { webhookUrl: string; payload: Record<string, unknown> }) =>
+    fetchApi<ApiResponse<NarN8nForwardResult>>('/nar/n8n/forward', {
+      method: 'POST', token, body: JSON.stringify(body),
+    }),
 };
